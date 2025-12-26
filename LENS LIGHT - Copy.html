@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#000000">
+    <title>Survey Cam Pro</title>
+    <style>
+        /* 1. Basic Reset & Full Screen Video */
+        :root {
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-right: env(safe-area-inset-right, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-left: env(safe-area-inset-left, 0px);
+            --app-vh: 100vh;
+        }
+        * { box-sizing: border-box; }
+
+        html, body {
+            height: 100%;
+            width: 100%;
+            -webkit-text-size-adjust: 100%;
+        }
+        body { 
+            margin: 0; padding: 0; 
+            background-color: #000; 
+            overflow: hidden; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            color: white; 
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+            height: calc(var(--app-vh) * 1px);
+        }
+        #camera-view {
+            position: fixed; top: 0; left: 0; width: 100%; height: calc(var(--app-vh) * 1px);
+            z-index: 1;
+        }
+        video {
+            width: 100%; height: 100%; object-fit: cover;
+        }
+
+        /* 2. UI Overlay Layer */
+        .ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 2; pointer-events: none;
+        }
+
+        /* 3. Enhanced Compass (Top Left) */
+        #compass-container {
+            position: absolute; top: calc(20px + var(--safe-top)); left: calc(20px + var(--safe-left));
+            width: 90px; height: 90px;
+            border-radius: 50%;
+            border: 3px solid rgba(0, 255, 255, 0.6);
+            background: rgba(0, 0, 0, 0.5);
+            display: flex; justify-content: center; align-items: center;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease;
+        }
+        @media (hover: hover) {
+            #compass-container:hover { transform: scale(1.05); }
+        }
+        #compass-arrow {
+            width: 0; height: 0;
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-bottom: 45px solid #00ffff;
+            transform-origin: bottom center;
+            filter: drop-shadow(0 0 5px #00ffff);
+            transition: transform 0.2s ease-out;
+        }
+        .compass-label {
+            position: absolute; font-weight: bold; font-size: 14px;
+            text-shadow: 0 0 5px black;
+        }
+        .n { top: 8px; color: #00ffff; font-size: 16px; } 
+        .s { bottom: 8px; color: #fff; } 
+        .e { right: 8px; color: #fff; } 
+        .w { left: 8px; color: #fff; }
+
+        /* 4. Enhanced Data Overlay (Bottom Right) */
+        #data-container {
+            position: absolute; bottom: calc(140px + var(--safe-bottom)); right: calc(20px + var(--safe-right));
+            text-align: right;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 12px 16px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+        .data-line { margin-bottom: 6px; }
+        .large-text { font-size: 1.1rem; font-weight: bold; color: #00ff00; }
+        .small-text { font-size: 0.85rem; color: #ddd; }
+        .accuracy-good { color: #00ff00; }
+        .accuracy-medium { color: #ffaa00; }
+        .accuracy-poor { color: #ff4444; }
+
+        /* 5. GPS Accuracy Indicator */
+        #gps-accuracy {
+            font-size: 0.75rem;
+            margin-top: 4px;
+        }
+
+        /* 6. Mini Map Placeholder (Bottom Left) */
+        #map-placeholder {
+            position: absolute; bottom: calc(140px + var(--safe-bottom)); left: calc(20px + var(--safe-left));
+            width: 120px; height: 120px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            display: flex; 
+            flex-direction: column;
+            justify-content: center; 
+            align-items: center;
+            font-size: 0.7rem; 
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+        #map-dot {
+            width: 12px; height: 12px;
+            background: #ff0000;
+            border-radius: 50%;
+            margin-top: 8px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.3); }
+        }
+
+        /* 7. Controls (Bottom Center) */
+        #controls {
+            position: absolute; bottom: calc(30px + var(--safe-bottom)); left: 0; width: 100%;
+            display: flex; justify-content: center; align-items: center; gap: 20px;
+            z-index: 10;
+        }
+        #shutter-btn {
+            width: 75px; height: 75px;
+            background-color: white;
+            border-radius: 50%;
+            border: 5px solid #333;
+            cursor: pointer;
+            pointer-events: auto;
+            transition: all 0.1s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            touch-action: manipulation;
+        }
+        #shutter-btn:active { 
+            background-color: #ddd; 
+            transform: scale(0.9); 
+        }
+
+        /* 8. Settings Button */
+        #settings-btn {
+            width: 50px; height: 50px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 50%;
+            border: 3px solid #666;
+            cursor: pointer;
+            pointer-events: auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            transition: all 0.2s ease;
+            touch-action: manipulation;
+        }
+        #settings-btn:active {
+            transform: scale(0.9);
+        }
+
+        /* 9. Gallery Button */
+        #gallery-btn {
+            width: 50px; height: 50px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            border: 3px solid #666;
+            cursor: pointer;
+            pointer-events: auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            transition: all 0.2s ease;
+            position: relative;
+            touch-action: manipulation;
+        }
+        #gallery-btn:active {
+            transform: scale(0.9);
+        }
+        #photo-count {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ff4444;
+            color: white;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        /* 10. Flash Effect */
+        #flash {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: white;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 100;
+        }
+        #flash.active {
+            animation: flash-animation 0.3s ease-out;
+        }
+        @keyframes flash-animation {
+            0% { opacity: 0; }
+            50% { opacity: 0.8; }
+            100% { opacity: 0; }
+        }
+
+        /* 11. Settings Panel */
+        #settings-panel {
+            position: fixed;
+            bottom: -400px;
+            left: 0;
+            width: 100%;
+            height: min(400px, calc(var(--app-vh) * 1px - 40px));
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(20px);
+            border-top: 2px solid rgba(255, 255, 255, 0.2);
+            z-index: 50;
+            transition: bottom 0.3s ease;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            pointer-events: auto;
+            padding-bottom: calc(20px + var(--safe-bottom));
+        }
+        #settings-panel.open {
+            bottom: 0;
+        }
+        .settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .settings-header h2 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        .close-btn {
+            background: #ff4444;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .setting-item {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .setting-item label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #00ffff;
+        }
+        .setting-item input[type="text"],
+        .setting-item select {
+            width: 100%;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 5px;
+            color: white;
+            font-size: 14px;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ccc;
+            transition: 0.4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #00ff00;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        /* 12. Gallery Modal */
+        #gallery-modal {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.98);
+            z-index: 60;
+            display: none;
+            flex-direction: column;
+            pointer-events: auto;
+        }
+        #gallery-modal.open {
+            display: flex;
+        }
+        .gallery-header {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .gallery-grid {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        .gallery-item {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+        .gallery-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .gallery-item-delete {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: #ff4444;
+            border: none;
+            color: white;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 13. Permission Button */
+        #ios-perm-btn {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, #007aff, #0051d5);
+            color: white; border: none; padding: 18px 30px;
+            border-radius: 12px; font-size: 18px; 
+            pointer-events: auto; z-index: 20;
+            display: block;
+            box-shadow: 0 6px 20px rgba(0, 122, 255, 0.4);
+            font-weight: bold;
+            cursor: pointer;
+        }
+        #ios-perm-btn:active {
+            transform: translate(-50%, -50%) scale(0.95);
+        }
+
+        /* 14. Status Messages */
+        #status-msg {
+            position: absolute;
+            top: calc(20px + var(--safe-top));
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            z-index: 30;
+        }
+        #status-msg.show {
+            opacity: 1;
+        }
+
+        /* 15. Zoom Controls */
+        #zoom-controls {
+            position: absolute;
+            right: calc(20px + var(--safe-right));
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: auto;
+        }
+        .zoom-btn {
+            width: 45px;
+            height: 45px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 2px solid #666;
+            border-radius: 50%;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+            touch-action: manipulation;
+        }
+        .zoom-btn:active {
+            transform: scale(0.9);
+        }
+        @media (max-width: 430px) {
+            #compass-container { width: 76px; height: 76px; }
+            #map-placeholder { width: 105px; height: 105px; }
+            #data-container { padding: 10px 12px; }
+            #controls { gap: 14px; }
+            #shutter-btn { width: 70px; height: 70px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="camera-view">
+        <video id="video" autoplay playsinline muted></video>
+    </div>
+
+    <div id="flash"></div>
+    <div id="status-msg"></div>
+
+    <button id="ios-perm-btn">🎥 Enable Camera & Sensors</button>
+
+    <div class="ui-layer">
+        <div id="compass-container">
+            <div class="compass-label n">N</div>
+            <div class="compass-label s">S</div>
+            <div class="compass-label e">E</div>
+            <div class="compass-label w">W</div>
+            <div id="compass-arrow"></div>
+        </div>
+
+        <div id="map-placeholder">
+            📍 GPS Position
+            <div id="map-dot"></div>
+        </div>
+
+        <div id="data-container">
+            <div class="data-line small-text" id="date-time">--/--/---- --:--:--</div>
+            <div class="data-line large-text" id="gps-coords">WAITING FOR GPS...</div>
+            <div class="data-line small-text" id="location-name">Location: Unknown</div>
+            <div class="data-line small-text" id="altitude">Alt: -- m</div>
+            <div class="data-line small-text" id="heading-text">Heading: --°</div>
+            <div class="data-line small-text" id="gps-accuracy">Accuracy: --</div>
+        </div>
+
+        <div id="zoom-controls">
+            <button class="zoom-btn" id="zoom-in">+</button>
+            <button class="zoom-btn" id="zoom-out">−</button>
+        </div>
+    </div>
+
+    <div id="controls">
+        <button id="gallery-btn">
+            📷
+            <span id="photo-count" style="display: none;">0</span>
+        </button>
+        <button id="shutter-btn"></button>
+        <button id="settings-btn">⚙️</button>
+    </div>
+
+    <div id="settings-panel">
+        <div class="settings-header">
+            <h2>⚙️ Settings</h2>
+            <button class="close-btn" id="close-settings">Close</button>
+        </div>
+        
+        <div class="setting-item">
+            <label>📝 Project Name</label>
+            <input type="text" id="project-name" placeholder="e.g., Site Survey 2025">
+        </div>
+
+        <div class="setting-item">
+            <label>📍 Custom Location Tag</label>
+            <input type="text" id="custom-location" placeholder="e.g., Riyadh Province">
+        </div>
+
+        <div class="setting-item">
+            <label>📐 Units</label>
+            <select id="units-select">
+                <option value="metric">Metric (meters)</option>
+                <option value="imperial">Imperial (feet)</option>
+            </select>
+        </div>
+
+        <div class="setting-item">
+            <label style="display: flex; justify-content: space-between; align-items: center;">
+                <span>🗺️ Show Compass Overlay</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-compass" checked>
+                    <span class="slider"></span>
+                </label>
+            </label>
+        </div>
+
+        <div class="setting-item">
+            <label style="display: flex; justify-content: space-between; align-items: center;">
+                <span>📊 Show Data Overlay</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-data" checked>
+                    <span class="slider"></span>
+                </label>
+            </label>
+        </div>
+
+        <div class="setting-item">
+            <label>📸 Image Quality</label>
+            <select id="quality-select">
+                <option value="1.0">High (100%)</option>
+                <option value="0.9" selected>Medium (90%)</option>
+                <option value="0.8">Low (80%)</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="gallery-modal">
+        <div class="gallery-header">
+            <h2>📷 Gallery (<span id="gallery-count">0</span>)</h2>
+            <button class="close-btn" id="close-gallery">Close</button>
+        </div>
+        <div class="gallery-grid" id="gallery-grid"></div>
+    </div>
+
+    <canvas id="hidden-canvas" style="display:none;"></canvas>
+
+<script>
+    // --- VARIABLES ---
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('hidden-canvas');
+    const ctx = canvas.getContext('2d');
+    const shutterBtn = document.getElementById('shutter-btn');
+    const permBtn = document.getElementById('ios-perm-btn');
+    const flash = document.getElementById('flash');
+    const statusMsg = document.getElementById('status-msg');
+
+    // Settings
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsPanel = document.getElementById('settings-panel');
+    const closeSettings = document.getElementById('close-settings');
+
+    // Gallery
+    const galleryBtn = document.getElementById('gallery-btn');
+    const galleryModal = document.getElementById('gallery-modal');
+    const closeGallery = document.getElementById('close-gallery');
+    const galleryGrid = document.getElementById('gallery-grid');
+    const photoCount = document.getElementById('photo-count');
+
+    // Zoom
+    const zoomInBtn = document.getElementById('zoom-in');
+    const zoomOutBtn = document.getElementById('zoom-out');
+
+    // State
+    let currentHeading = 0;
+    let currentLat = 0;
+    let currentLon = 0;
+    let currentAlt = 0;
+    let currentAccuracy = 0;
+    let zoomLevel = 1;
+    let videoStream = null;
+
+    // Settings State
+    let settings = {
+        projectName: '',
+        customLocation: 'Riyadh Province',
+        units: 'metric',
+        showCompass: true,
+        showData: true,
+        imageQuality: 0.9
+    };
+
+    // Gallery Storage
+    let photos = [];
+
+    // Load saved settings and photos
+    loadSettings();
+    loadPhotos();
+
+    // --- 1. INITIALIZATION ---
+    async function initCamera() {
+        try {
+            const constraints = {
+                video: { 
+                    facingMode: { ideal: "environment" },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                } 
+            };
+            
+            videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = videoStream;
+            
+            // Get video track for zoom
+            const track = videoStream.getVideoTracks()[0];
+            let capabilities = {};
+            try {
+                capabilities = track.getCapabilities ? track.getCapabilities() : {};
+            } catch (e) {
+                capabilities = {};
+            }
+            
+            // Check if zoom is supported
+            if (capabilities.zoom) {
+                console.log('Zoom supported:', capabilities.zoom);
+            }
+            
+            showStatus('✓ Camera ready', 2000);
+        } catch (err) {
+            showStatus('❌ Camera error: ' + err.message, 4000);
+            console.error(err);
+        }
+    }
+
+    // --- 2. SENSORS (GPS & COMPASS) ---
+    permBtn.addEventListener('click', async () => {
+        permBtn.disabled = true;
+        await initCamera();
+
+        // Request Compass
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            try {
+                const permission = await DeviceOrientationEvent.requestPermission();
+                if (permission === 'granted') {
+                    window.addEventListener('deviceorientation', handleOrientation);
+                    permBtn.style.display = 'none';
+                    showStatus('✓ Sensors enabled', 2000);
+                } else {
+                    showStatus('❌ Permission denied', 3000);
+                }
+            } catch (e) {
+                showStatus('❌ ' + e.message, 3000);
+            }
+        } else {
+            window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+            window.addEventListener('deviceorientation', handleOrientation, true);
+            permBtn.style.display = 'none';
+            showStatus('✓ Sensors enabled', 2000);
+        }
+
+        // Start GPS
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(updateGPS, handleGPSError, {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 10000
+            });
+        } else {
+            showStatus('❌ GPS not supported', 3000);
+        }
+    });
+
+    function handleOrientation(event) {
+        let heading = event.webkitCompassHeading || 
+                     (event.absolute ? 360 - event.alpha : null) ||
+                     (event.alpha ? 360 - event.alpha : 0);
+        
+        if (heading < 0) heading += 360;
+        if (heading >= 360) heading -= 360;
+        
+        currentHeading = heading;
+        
+        document.getElementById('compass-arrow').style.transform = `rotate(${heading}deg)`;
+        document.getElementById('heading-text').innerText = `Heading: ${Math.round(heading)}° ${getCardinalDirection(heading)}`;
+    }
+
+    function getCardinalDirection(heading) {
+        const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        const index = Math.round(heading / 45) % 8;
+        return directions[index];
+    }
+
+    function updateGPS(position) {
+        currentLat = position.coords.latitude;
+        currentLon = position.coords.longitude;
+        currentAlt = position.coords.altitude || 0;
+        currentAccuracy = position.coords.accuracy || 0;
+
+        const latFixed = currentLat.toFixed(6);
+        const lonFixed = currentLon.toFixed(6);
+        
+        document.getElementById('gps-coords').innerText = `${latFixed}, ${lonFixed}`;
+        
+        // Convert altitude based on units
+        let altDisplay = currentAlt;
+        let unit = 'm';
+        if (settings.units === 'imperial') {
+            altDisplay = currentAlt * 3.28084; // meters to feet
+            unit = 'ft';
+        }
+        document.getElementById('altitude').innerText = `Alt: ${Math.round(altDisplay)} ${unit}`;
+        
+        // Update accuracy indicator
+        updateAccuracyDisplay(currentAccuracy);
+    }
+
+    function updateAccuracyDisplay(accuracy) {
+        const accuracyEl = document.getElementById('gps-accuracy');
+        let accuracyClass = 'accuracy-poor';
+        let accuracyText = 'Poor';
+        
+        if (accuracy < 10) {
+            accuracyClass = 'accuracy-good';
+            accuracyText = 'Excellent';
+        } else if (accuracy < 30) {
+            accuracyClass = 'accuracy-medium';
+            accuracyText = 'Good';
+        }
+        
+        accuracyEl.className = `data-line small-text ${accuracyClass}`;
+        accuracyEl.innerText = `Accuracy: ${Math.round(accuracy)}m (${accuracyText})`;
+    }
+
+    function handleGPSError(error) {
+        let message = 'GPS Error: ';
+        switch(error.code) {
+            case error.PERMISSION_DENIED:
+                message += 'Permission denied';
+                break;
+            case error.POSITION_UNAVAILABLE:
+                message += 'Position unavailable';
+                break;
+            case error.TIMEOUT:
+                message += 'Timeout';
+                break;
+            default:
+                message += 'Unknown error';
+        }
+        showStatus('❌ ' + message, 3000);
+    }
+
+    // --- 3. TIME UPDATE ---
+    setInterval(() => {
+        const now = new Date();
+        const options = { 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit',
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit',
+            hour12: false
+        };
+        document.getElementById('date-time').innerText = now.toLocaleString('en-GB', options);
+    }, 1000);
+
+    // --- 4. ZOOM CONTROLS ---
+    zoomInBtn.addEventListener('click', () => {
+        if (zoomLevel < 3) {
+            zoomLevel += 0.5;
+            applyZoom();
+        }
+    });
+
+    zoomOutBtn.addEventListener('click', () => {
+        if (zoomLevel > 1) {
+            zoomLevel -= 0.5;
+            applyZoom();
+        }
+    });
+
+    function applyZoom() {
+        if (videoStream) {
+            const track = videoStream.getVideoTracks()[0];
+            let capabilities = {};
+            try {
+                capabilities = track.getCapabilities ? track.getCapabilities() : {};
+            } catch (e) {
+                capabilities = {};
+            }
+            
+            if (capabilities.zoom) {
+                const maxZoom = capabilities.zoom.max;
+                try {
+                    track.applyConstraints({
+                        advanced: [{ zoom: Math.min(zoomLevel, maxZoom) }]
+                    });
+                } catch (e) {
+                    // Ignore constraint failures; fallback to CSS zoom below.
+                }
+            }
+        }
+        video.style.transform = `scale(${zoomLevel})`;
+    }
+
+    // --- 5. IMAGE CAPTURE ---
+    shutterBtn.addEventListener('click', capturePhoto);
+
+    function capturePhoto() {
+        // Flash effect
+        flash.classList.add('active');
+        setTimeout(() => flash.classList.remove('active'), 300);
+
+        // Set canvas to match video resolution
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // Draw Video Frame
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Draw overlays if enabled
+        const fontSize = Math.max(canvas.width / 40, 16);
+        
+        if (settings.showData) {
+            drawDataOverlay(fontSize);
+        }
+        
+        if (settings.showCompass) {
+            drawCompassOverlay();
+        }
+
+        // Export Image
+        const dataURL = canvas.toDataURL('image/jpeg', settings.imageQuality);
+        
+        // Save to gallery
+        const photo = {
+            id: Date.now(),
+            dataURL: dataURL,
+            timestamp: new Date().toISOString(),
+            lat: currentLat,
+            lon: currentLon,
+            alt: currentAlt,
+            heading: currentHeading,
+            projectName: settings.projectName,
+            location: settings.customLocation
+        };
+        
+        photos.push(photo);
+        savePhotos();
+        updateGalleryUI();
+        
+        // Also trigger download
+        downloadPhoto(dataURL);
+        
+        showStatus('✓ Photo captured!', 2000);
+    }
+
+    function drawDataOverlay(fontSize) {
+        ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
+        ctx.fillStyle = "#00ff00";
+        ctx.shadowColor = "black";
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 2;
+        ctx.textAlign = "right";
+
+        const x = canvas.width - 40;
+        let y = canvas.height - 80;
+        const lineHeight = fontSize * 1.4;
+
+        const now = new Date();
+        const dateStr = now.toLocaleString('en-GB');
+        
+        // Project name if set
+        if (settings.projectName) {
+            ctx.fillText(`Project: ${settings.projectName}`, x, y - (lineHeight * 5));
+        }
+        
+        ctx.fillText(`Date: ${dateStr}`, x, y - (lineHeight * 4));
+        ctx.fillText(`GPS: ${currentLat.toFixed(6)}, ${currentLon.toFixed(6)}`, x, y - (lineHeight * 3));
+        
+        let altDisplay = currentAlt;
+        let unit = 'm';
+        if (settings.units === 'imperial') {
+            altDisplay = currentAlt * 3.28084;
+            unit = 'ft';
+        }
+        
+        ctx.fillText(`Alt: ${Math.round(altDisplay)}${unit} | Heading: ${Math.round(currentHeading)}° ${getCardinalDirection(currentHeading)}`, x, y - (lineHeight * 2));
+        ctx.fillText(`Accuracy: ±${Math.round(currentAccuracy)}m`, x, y - lineHeight);
+        ctx.fillText(`${settings.customLocation}`, x, y);
+    }
+
+    function drawCompassOverlay() {
+        const size = canvas.width / 12;
+        const cx = size * 1.5;
+        const cy = size * 1.5;
+        const r = size * 0.7;
+        
+        // Draw circle
+        ctx.beginPath();
+        ctx.strokeStyle = "#00ffff";
+        ctx.lineWidth = Math.max(size / 15, 3);
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = "#00ffff";
+        ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+        ctx.stroke();
+
+        // Draw N marker
+        ctx.save();
+        ctx.fillStyle = "#00ffff";
+        ctx.font = `bold ${size/3}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.shadowBlur = 4;
+        ctx.fillText("N", cx, cy - r - size/4);
+        ctx.restore();
+
+        // Draw arrow
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(currentHeading * Math.PI / 180);
+        ctx.fillStyle = "#00ffff";
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = "#00ffff";
+        ctx.beginPath();
+        ctx.moveTo(0, -r + size/6);
+        ctx.lineTo(size/6, size/6);
+        ctx.lineTo(-size/6, size/6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+
+    function downloadPhoto(dataURL) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const projectPrefix = settings.projectName ? settings.projectName.replace(/\s+/g, '_') + '_' : '';
+        const filename = `${projectPrefix}Survey_${timestamp}.jpg`;
+
+        const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+        if (isIOS) {
+            // iOS Safari often ignores `download` and may navigate away; open in a new tab instead.
+            const opened = window.open(dataURL, '_blank', 'noopener,noreferrer');
+            if (!opened) {
+                showStatus('⚠️ Popup blocked. Tap and hold to save.', 3500);
+            }
+            return;
+        }
+
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = dataURL;
+        link.rel = 'noopener';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    }
+
+    // --- iOS SAFARI: Stable viewport height ---
+    function updateAppVh() {
+        // Use innerHeight to avoid the iOS address-bar 100vh bug.
+        document.documentElement.style.setProperty('--app-vh', String(window.innerHeight));
+    }
+
+    updateAppVh();
+    window.addEventListener('resize', updateAppVh);
+    window.addEventListener('orientationchange', updateAppVh);
+
+    // --- 6. SETTINGS ---
+    settingsBtn.addEventListener('click', () => {
+        settingsPanel.classList.add('open');
+    });
+
+    closeSettings.addEventListener('click', () => {
+        settingsPanel.classList.remove('open');
+        saveSettings();
+    });
+
+    document.getElementById('project-name').addEventListener('change', (e) => {
+        settings.projectName = e.target.value;
+        saveSettings();
+    });
+
+    document.getElementById('custom-location').addEventListener('change', (e) => {
+        settings.customLocation = e.target.value;
+        document.getElementById('location-name').innerText = `Location: ${e.target.value}`;
+        saveSettings();
+    });
+
+    document.getElementById('units-select').addEventListener('change', (e) => {
+        settings.units = e.target.value;
+        saveSettings();
+    });
+
+    document.getElementById('toggle-compass').addEventListener('change', (e) => {
+        settings.showCompass = e.target.checked;
+        document.getElementById('compass-container').style.display = e.target.checked ? 'flex' : 'none';
+        saveSettings();
+    });
+
+    document.getElementById('toggle-data').addEventListener('change', (e) => {
+        settings.showData = e.target.checked;
+        document.getElementById('data-container').style.display = e.target.checked ? 'block' : 'none';
+        saveSettings();
+    });
+
+    document.getElementById('quality-select').addEventListener('change', (e) => {
+        settings.imageQuality = parseFloat(e.target.value);
+        saveSettings();
+    });
+
+    function saveSettings() {
+        localStorage.setItem('surveycam_settings', JSON.stringify(settings));
+    }
+
+    function loadSettings() {
+        const saved = localStorage.getItem('surveycam_settings');
+        if (saved) {
+            settings = { ...settings, ...JSON.parse(saved) };
+            
+            // Apply to UI
+            document.getElementById('project-name').value = settings.projectName;
+            document.getElementById('custom-location').value = settings.customLocation;
+            document.getElementById('units-select').value = settings.units;
+            document.getElementById('toggle-compass').checked = settings.showCompass;
+            document.getElementById('toggle-data').checked = settings.showData;
+            document.getElementById('quality-select').value = settings.imageQuality;
+            document.getElementById('location-name').innerText = `Location: ${settings.customLocation}`;
+        }
+    }
+
+    // --- 7. GALLERY ---
+    galleryBtn.addEventListener('click', () => {
+        galleryModal.classList.add('open');
+        renderGallery();
+    });
+
+    closeGallery.addEventListener('click', () => {
+        galleryModal.classList.remove('open');
+    });
+
+    function renderGallery() {
+        galleryGrid.innerHTML = '';
+        
+        photos.slice().reverse().forEach(photo => {
+            const item = document.createElement('div');
+            item.className = 'gallery-item';
+            
+            const img = document.createElement('img');
+            img.src = photo.dataURL;
+            img.alt = 'Survey photo';
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'gallery-item-delete';
+            deleteBtn.innerHTML = '×';
+            deleteBtn.onclick = (e) => {
+                e.stopPropagation();
+                deletePhoto(photo.id);
+            };
+            
+            item.onclick = () => {
+                downloadPhoto(photo.dataURL);
+                showStatus('✓ Photo downloaded', 2000);
+            };
+            
+            item.appendChild(img);
+            item.appendChild(deleteBtn);
+            galleryGrid.appendChild(item);
+        });
+    }
+
+    function deletePhoto(id) {
+        if (confirm('Delete this photo?')) {
+            photos = photos.filter(p => p.id !== id);
+            savePhotos();
+            updateGalleryUI();
+            renderGallery();
+            showStatus('✓ Photo deleted', 2000);
+        }
+    }
+
+    function savePhotos() {
+        // Save to localStorage (limited to ~5-10MB)
+        try {
+            localStorage.setItem('surveycam_photos', JSON.stringify(photos));
+        } catch (e) {
+            if (e.name === 'QuotaExceededError') {
+                showStatus('⚠️ Storage full! Delete old photos.', 4000);
+                // Keep only last 20 photos
+                photos = photos.slice(-20);
+                localStorage.setItem('surveycam_photos', JSON.stringify(photos));
+            }
+        }
+    }
+
+    function loadPhotos() {
+        const saved = localStorage.getItem('surveycam_photos');
+        if (saved) {
+            photos = JSON.parse(saved);
+            updateGalleryUI();
+        }
+    }
+
+    function updateGalleryUI() {
+        const count = photos.length;
+        document.getElementById('gallery-count').innerText = count;
+        
+        if (count > 0) {
+            photoCount.style.display = 'flex';
+            photoCount.innerText = count;
+        } else {
+            photoCount.style.display = 'none';
+        }
+    }
+
+    // --- 8. STATUS MESSAGES ---
+    function showStatus(message, duration = 3000) {
+        statusMsg.innerText = message;
+        statusMsg.classList.add('show');
+        
+        setTimeout(() => {
+            statusMsg.classList.remove('show');
+        }, duration);
+    }
+
+    // --- 9. PREVENT SCREEN SLEEP ---
+    let wakeLock = null;
+    async function requestWakeLock() {
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+                console.log('Wake Lock active');
+            }
+        } catch (err) {
+            console.error('Wake Lock error:', err);
+        }
+    }
+    
+    // Request wake lock when camera starts
+    video.addEventListener('play', () => {
+        requestWakeLock();
+    });
+
+</script>
+</body>
+</html>
