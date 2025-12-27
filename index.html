@@ -964,8 +964,161 @@
         imageQuality: 0.9
     };
 
-    // Gallery Storage
+    // Gallery Storage (metadata in-memory; blobs in IndexedDB)
     let photos = [];
+    let lastCapturedPhotoId = null;
+
+    // Object URLs for gallery thumbnails (avoid memory leaks)
+    const photoObjectUrls = new Map();
+
+    // IndexedDB (persistent photo storage)
+    const DB_NAME = 'lens_light_db';
+    const DB_VERSION = 1;
+    const PHOTO_STORE = 'photos';
+    let dbPromise = null;
+
+    function openPhotoDb() {
+        if (dbPromise) return dbPromise;
+        dbPromise = new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onupgradeneeded = () => {
+                const db = request.result;
+                if (!db.objectStoreNames.contains(PHOTO_STORE)) {
+                    db.createObjectStore(PHOTO_STORE, { keyPath: 'id' });
+                }
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        return dbPromise;
+    }
+
+    async function dbPutPhoto(record) {
+        const db = await openPhotoDb();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(PHOTO_STORE, 'readwrite');
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.objectStore(PHOTO_STORE).put(record);
+        });
+    }
+
+    async function dbDeletePhoto(id) {
+        const db = await openPhotoDb();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(PHOTO_STORE, 'readwrite');
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.objectStore(PHOTO_STORE).delete(id);
+        });
+    }
+
+    async function dbGetAllPhotos() {
+        const db = await openPhotoDb();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(PHOTO_STORE, 'readonly');
+            const req = tx.objectStore(PHOTO_STORE).getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    async function dbGetPhoto(id) {
+        const db = await openPhotoDb();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(PHOTO_STORE, 'readonly');
+            const req = tx.objectStore(PHOTO_STORE).get(id);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    async function dataUrlToBlob(dataUrl) {
+        const response = await fetch(dataUrl);
+        return await response.blob();
+    }
+
+    function canvasToJpegBlob(quality) {
+        return new Promise((resolve) => {
+            canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+        });
+    }
+
+    function getPhotoFilename(photoMeta) {
+        const iso = (photoMeta.timestamp || new Date().toISOString()).replace(/[:.]/g, '-');
+        const projectPrefix = photoMeta.projectName ? photoMeta.projectName.replace(/\s+/g, '_') + '_' : '';
+        return `${projectPrefix}Survey_${iso}.jpg`;
+    }
+
+    function revokeAllPhotoObjectUrls() {
+        for (const url of photoObjectUrls.values()) {
+            URL.revokeObjectURL(url);
+        }
+        photoObjectUrls.clear();
+    }
+
+    async function migrateLegacyLocalStoragePhotos() {
+        // Older versions stored base64 photos in localStorage and hit quota.
+        const legacyKey = 'surveycam_photos';
+        let saved = null;
+        try {
+            saved = localStorage.getItem(legacyKey);
+        } catch (_) {
+            saved = null;
+        }
+        if (!saved) return;
+
+        try {
+            const legacyPhotos = JSON.parse(saved);
+            if (!Array.isArray(legacyPhotos) || legacyPhotos.length === 0) {
+                localStorage.removeItem(legacyKey);
+                return;
+            }
+
+            for (const legacy of legacyPhotos) {
+                if (!legacy || !legacy.id || !legacy.dataURL) continue;
+                const blob = await dataUrlToBlob(legacy.dataURL);
+                await dbPutPhoto({
+                    id: legacy.id,
+                    timestamp: legacy.timestamp,
+                    lat: legacy.lat,
+                    lon: legacy.lon,
+                    alt: legacy.alt,
+                    heading: legacy.heading,
+                    projectName: legacy.projectName,
+                    location: legacy.location,
+                    mime: blob.type || 'image/jpeg',
+                    blob
+                });
+            }
+
+            localStorage.removeItem(legacyKey);
+        } catch (e) {
+            console.warn('Legacy photo migration failed:', e);
+            try { localStorage.removeItem(legacyKey); } catch (_) {}
+        }
+    }
+
+    async function loadPhotos() {
+        await openPhotoDb();
+        await migrateLegacyLocalStoragePhotos();
+        const records = await dbGetAllPhotos();
+        photos = records
+            .map((r) => ({
+                id: r.id,
+                timestamp: r.timestamp,
+                lat: r.lat,
+                lon: r.lon,
+                alt: r.alt,
+                heading: r.heading,
+                projectName: r.projectName,
+                location: r.location,
+                mime: r.mime || 'image/jpeg'
+            }))
+            .sort((a, b) => (a.id > b.id ? 1 : -1));
+
+        updateGalleryUI();
+    }
 
     // Load saved settings and photos
     loadSettings();
@@ -1212,7 +1365,7 @@
     // --- 5. IMAGE CAPTURE ---
     shutterBtn.addEventListener('click', capturePhoto);
 
-    function capturePhoto() {
+    async function capturePhoto() {
         // Flash effect
         flash.classList.add('active');
         setTimeout(() => flash.classList.remove('active'), 300);
@@ -1235,30 +1388,35 @@
             drawCompassOverlay();
         }
 
-        // Export Image
-        const dataURL = canvas.toDataURL('image/jpeg', settings.imageQuality);
-        
-        // Save to gallery
+        // Export Image (Blob) and store in IndexedDB (prevents localStorage "storage full")
+        const blob = await canvasToJpegBlob(settings.imageQuality);
+        if (!blob) {
+            showStatus('❌ Capture failed', 2500);
+            return;
+        }
+
         const photo = {
             id: Date.now(),
-            dataURL: dataURL,
             timestamp: new Date().toISOString(),
             lat: currentLat,
             lon: currentLon,
             alt: currentAlt,
             heading: currentHeading,
             projectName: settings.projectName,
-            location: settings.customLocation
+            location: settings.customLocation,
+            mime: blob.type || 'image/jpeg'
         };
-        
-        photos.push(photo);
-        savePhotos();
-        updateGalleryUI();
-        
-        // Also trigger download
-        downloadPhoto(dataURL);
-        
-        showStatus('✓ Photo captured!', 2000);
+
+        try {
+            await dbPutPhoto({ ...photo, blob });
+            photos.push(photo);
+            lastCapturedPhotoId = photo.id;
+            updateGalleryUI();
+            showStatus('✓ Photo captured. Open Gallery to save/share.', 2500);
+        } catch (e) {
+            console.error('IndexedDB save failed:', e);
+            showStatus('❌ Save failed (storage)', 3500);
+        }
     }
 
     function drawDataOverlay(fontSize) {
@@ -1338,28 +1496,40 @@
         ctx.restore();
     }
 
-    function downloadPhoto(dataURL) {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const projectPrefix = settings.projectName ? settings.projectName.replace(/\s+/g, '_') + '_' : '';
-        const filename = `${projectPrefix}Survey_${timestamp}.jpg`;
-
+    function downloadBlob(blob, filename) {
         const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+        const url = URL.createObjectURL(blob);
+
         if (isIOS) {
-            // iOS Safari often ignores `download` and may navigate away; open in a new tab instead.
-            const opened = window.open(dataURL, '_blank', 'noopener,noreferrer');
+            const opened = window.open(url, '_blank', 'noopener,noreferrer');
             if (!opened) {
                 showStatus('⚠️ Popup blocked. Tap and hold to save.', 3500);
             }
+            setTimeout(() => URL.revokeObjectURL(url), 60_000);
             return;
         }
 
         const link = document.createElement('a');
         link.download = filename;
-        link.href = dataURL;
+        link.href = url;
         link.rel = 'noopener';
         document.body.appendChild(link);
         link.click();
         link.remove();
+        URL.revokeObjectURL(url);
+    }
+
+    async function shareBlob(blob, filename) {
+        const file = new File([blob], filename, { type: blob.type || 'image/jpeg' });
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+                files: [file],
+                title: 'Survey Photo',
+                text: 'Photo from LIGHT LENS.'
+            });
+            return true;
+        }
+        return false;
     }
 
     // --- iOS SAFARI: Stable viewport height ---
@@ -1447,14 +1617,25 @@
 
     function renderGallery() {
         galleryGrid.innerHTML = '';
-        
-        photos.slice().reverse().forEach(photo => {
+        revokeAllPhotoObjectUrls();
+
+        photos.slice().reverse().forEach(async (photo) => {
             const item = document.createElement('div');
             item.className = 'gallery-item';
             
             const img = document.createElement('img');
-            img.src = photo.dataURL;
             img.alt = 'Survey photo';
+
+            try {
+                const record = await dbGetPhoto(photo.id);
+                if (!record || !record.blob) return;
+                const url = URL.createObjectURL(record.blob);
+                photoObjectUrls.set(photo.id, url);
+                img.src = url;
+            } catch (e) {
+                console.error('Failed to load photo from DB', e);
+                return;
+            }
             
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'gallery-item-delete';
@@ -1464,9 +1645,25 @@
                 deletePhoto(photo.id);
             };
             
-            item.onclick = () => {
-                downloadPhoto(photo.dataURL);
-                showStatus('✓ Photo downloaded', 2000);
+            item.onclick = async () => {
+                try {
+                    const record = await dbGetPhoto(photo.id);
+                    if (!record || !record.blob) {
+                        showStatus('❌ Photo missing', 2500);
+                        return;
+                    }
+                    const filename = getPhotoFilename(photo);
+                    const shared = await shareBlob(record.blob, filename);
+                    if (shared) {
+                        showStatus('✓ Shared', 1500);
+                    } else {
+                        downloadBlob(record.blob, filename);
+                        showStatus('✓ Saved', 1500);
+                    }
+                } catch (e) {
+                    console.error('Gallery action failed:', e);
+                    showStatus('❌ Action failed', 2500);
+                }
             };
             
             item.appendChild(img);
@@ -1475,35 +1672,23 @@
         });
     }
 
-    function deletePhoto(id) {
-        if (confirm('Delete this photo?')) {
+    async function deletePhoto(id) {
+        if (!confirm('Delete this photo?')) return;
+        try {
+            await dbDeletePhoto(id);
             photos = photos.filter(p => p.id !== id);
-            savePhotos();
+            if (lastCapturedPhotoId === id) lastCapturedPhotoId = null;
+            const url = photoObjectUrls.get(id);
+            if (url) {
+                URL.revokeObjectURL(url);
+                photoObjectUrls.delete(id);
+            }
             updateGalleryUI();
             renderGallery();
             showStatus('✓ Photo deleted', 2000);
-        }
-    }
-
-    function savePhotos() {
-        // Save to localStorage (limited to ~5-10MB)
-        try {
-            localStorage.setItem('surveycam_photos', JSON.stringify(photos));
         } catch (e) {
-            if (e.name === 'QuotaExceededError') {
-                showStatus('⚠️ Storage full! Delete old photos.', 4000);
-                // Keep only last 20 photos
-                photos = photos.slice(-20);
-                localStorage.setItem('surveycam_photos', JSON.stringify(photos));
-            }
-        }
-    }
-
-    function loadPhotos() {
-        const saved = localStorage.getItem('surveycam_photos');
-        if (saved) {
-            photos = JSON.parse(saved);
-            updateGalleryUI();
+            console.error('Delete failed:', e);
+            showStatus('❌ Delete failed', 2500);
         }
     }
 
@@ -1552,8 +1737,42 @@
     const fileInput = document.getElementById('file-input');
 
     shareBtn.addEventListener('click', () => {
+        // Prefer sharing last captured photo; if none, open gallery or allow external image.
+        if (lastCapturedPhotoId) {
+            shareLastCapturedPhoto();
+            return;
+        }
+        if (photos.length > 0) {
+            galleryModal.classList.add('open');
+            renderGallery();
+            showStatus('Select a photo to share/save', 2000);
+            return;
+        }
         fileInput.click();
     });
+
+    async function shareLastCapturedPhoto() {
+        try {
+            const record = await dbGetPhoto(lastCapturedPhotoId);
+            if (!record || !record.blob) {
+                showStatus('❌ Last photo missing', 2500);
+                lastCapturedPhotoId = null;
+                return;
+            }
+            const meta = photos.find(p => p.id === lastCapturedPhotoId) || { id: lastCapturedPhotoId, timestamp: new Date().toISOString(), projectName: settings.projectName };
+            const filename = getPhotoFilename(meta);
+            const shared = await shareBlob(record.blob, filename);
+            if (shared) {
+                showStatus('✓ Shared last photo', 2000);
+            } else {
+                downloadBlob(record.blob, filename);
+                showStatus('✓ Saved last photo', 2000);
+            }
+        } catch (e) {
+            console.error('Share last captured failed:', e);
+            showStatus('❌ Share failed', 2500);
+        }
+    }
 
     fileInput.addEventListener('change', async (event) => {
         const file = event.target.files[0];
