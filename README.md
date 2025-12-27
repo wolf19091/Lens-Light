@@ -16,16 +16,17 @@ A progressive web app (PWA) for capturing and surveying photos with GPS, compass
 ## Deployment
 
 This project is deployed on GitHub Pages at:
-**https://wolf19091.github.io/Lens-Light/**
+**<https://wolf19091.github.io/Lens-Light/>**
 
 ### Deploy Your Own
 
 1. **Create a GitHub Repository:**
-   - Go to https://github.com/new
+   - Go to <https://github.com/new>
    - Name it `Lens-Light`
    - Make it public
 
 2. **Clone and Push:**
+
    ```bash
    cd path/to/your/project
    git init

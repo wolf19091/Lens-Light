@@ -789,8 +789,52 @@
             overflow: hidden;
             border: 1px solid rgba(255,255,255,0.10);
             background: rgba(255,255,255,0.04);
+            position: relative;
         }
         .gallery-item img{ transform: translateZ(0); }
+        .gallery-item-checkbox {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            width: 24px;
+            height: 24px;
+            display: none;
+            z-index: 10;
+        }
+        .gallery-item.select-mode .gallery-item-checkbox {
+            display: block;
+        }
+        .gallery-item.selected::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: rgba(34,211,238,0.25);
+            border: 3px solid var(--accent);
+            border-radius: 16px;
+            pointer-events: none;
+        }
+        .gallery-actions {
+            padding: 12px 20px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            border-bottom: 1px solid rgba(255,255,255,0.10);
+        }
+        .action-btn {
+            padding: 8px 14px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.14);
+            background: rgba(255,255,255,0.06);
+            color: white;
+            font-size: 13px;
+            cursor: pointer;
+            flex: 1;
+            min-width: 100px;
+        }
+        .action-btn:active {
+            transform: scale(0.97);
+            background: rgba(255,255,255,0.10);
+        }
         </style>
 </head>
 <body>
@@ -911,7 +955,16 @@
     <div id="gallery-modal">
         <div class="gallery-header">
             <h2>📷 Gallery (<span id="gallery-count">0</span>)</h2>
-            <button class="close-btn" id="close-gallery">Close</button>
+            <div style="display: flex; gap: 8px;">
+                <button class="action-btn" id="select-mode-btn" style="display: none;">Select</button>
+                <button class="close-btn" id="close-gallery">Close</button>
+            </div>
+        </div>
+        <div class="gallery-actions" id="gallery-actions" style="display: none;">
+            <button class="action-btn" id="share-selected-btn">📤 Share Selected</button>
+            <button class="action-btn" id="download-selected-btn">💾 Save Selected</button>
+            <button class="action-btn" id="delete-selected-btn">🗑️ Delete Selected</button>
+            <button class="action-btn" id="cancel-select-btn">Cancel</button>
         </div>
         <div class="gallery-grid" id="gallery-grid"></div>
     </div>
@@ -1123,6 +1176,7 @@
     // Load saved settings and photos
     loadSettings();
     loadPhotos();
+    checkStoredPermissions();
 
     // --- 1. INITIALIZATION ---
     async function initCamera() {
@@ -1160,6 +1214,42 @@
     }
 
     // --- 2. SENSORS (GPS & COMPASS) ---
+    // Check if permissions were previously granted
+    function checkStoredPermissions() {
+        const granted = localStorage.getItem('camera_sensors_granted');
+        if (granted === 'true') {
+            permBtn.style.display = 'none';
+            initCamera();
+            startSensors();
+        }
+    }
+
+    function startSensors() {
+        // Request Compass
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            // iOS - already granted if we're here
+            window.addEventListener('deviceorientation', handleOrientation);
+        } else {
+            // Android: Prefer absolute orientation
+            if ('ondeviceorientationabsolute' in window) {
+                window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+            } else {
+                window.addEventListener('deviceorientation', handleOrientation, true);
+            }
+        }
+
+        // Start GPS
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(updateGPS, handleGPSError, {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 10000
+            });
+        } else {
+            showStatus('❌ GPS not supported', 3000);
+        }
+    }
+
     permBtn.addEventListener('click', async () => {
         permBtn.disabled = true;
         await initCamera();
@@ -1169,16 +1259,22 @@
             try {
                 const permission = await DeviceOrientationEvent.requestPermission();
                 if (permission === 'granted') {
+                    localStorage.setItem('camera_sensors_granted', 'true');
                     window.addEventListener('deviceorientation', handleOrientation);
                     permBtn.style.display = 'none';
                     showStatus('✓ Sensors enabled', 2000);
                 } else {
                     showStatus('❌ Permission denied', 3000);
+                    permBtn.disabled = false;
+                    return;
                 }
             } catch (e) {
                 showStatus('❌ ' + e.message, 3000);
+                permBtn.disabled = false;
+                return;
             }
         } else {
+            localStorage.setItem('camera_sensors_granted', 'true');
             // Android: Prefer absolute orientation
             if ('ondeviceorientationabsolute' in window) {
                 window.addEventListener('deviceorientationabsolute', handleOrientation, true);
@@ -1412,7 +1508,7 @@
             photos.push(photo);
             lastCapturedPhotoId = photo.id;
             updateGalleryUI();
-            showStatus('✓ Photo captured. Open Gallery to save/share.', 2500);
+            // Silent capture - no interruption for multi-photo workflow
         } catch (e) {
             console.error('IndexedDB save failed:', e);
             showStatus('❌ Save failed (storage)', 3500);
@@ -1606,22 +1702,181 @@
     }
 
     // --- 7. GALLERY ---
+    let selectedPhotos = new Set();
+    let isSelectMode = false;
+
+    const selectModeBtn = document.getElementById('select-mode-btn');
+    const galleryActionsDiv = document.getElementById('gallery-actions');
+    const shareSelectedBtn = document.getElementById('share-selected-btn');
+    const downloadSelectedBtn = document.getElementById('download-selected-btn');
+    const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+    const cancelSelectBtn = document.getElementById('cancel-select-btn');
+
     galleryBtn.addEventListener('click', () => {
         galleryModal.classList.add('open');
         renderGallery();
+        // Show select button only if there are photos
+        if (photos.length > 0) {
+            selectModeBtn.style.display = 'block';
+        }
     });
 
     closeGallery.addEventListener('click', () => {
+        exitSelectMode();
         galleryModal.classList.remove('open');
     });
+
+    selectModeBtn.addEventListener('click', () => {
+        enterSelectMode();
+    });
+
+    cancelSelectBtn.addEventListener('click', () => {
+        exitSelectMode();
+    });
+
+    shareSelectedBtn.addEventListener('click', async () => {
+        if (selectedPhotos.size === 0) {
+            showStatus('⚠️ No photos selected', 2000);
+            return;
+        }
+        await shareSelectedPhotos();
+    });
+
+    downloadSelectedBtn.addEventListener('click', async () => {
+        if (selectedPhotos.size === 0) {
+            showStatus('⚠️ No photos selected', 2000);
+            return;
+        }
+        await downloadSelectedPhotos();
+    });
+
+    deleteSelectedBtn.addEventListener('click', async () => {
+        if (selectedPhotos.size === 0) {
+            showStatus('⚠️ No photos selected', 2000);
+            return;
+        }
+        if (confirm(`Delete ${selectedPhotos.size} photo(s)?`)) {
+            await deleteSelectedPhotos();
+        }
+    });
+
+    function enterSelectMode() {
+        isSelectMode = true;
+        selectedPhotos.clear();
+        galleryActionsDiv.style.display = 'flex';
+        selectModeBtn.style.display = 'none';
+        document.querySelectorAll('.gallery-item').forEach(item => {
+            item.classList.add('select-mode');
+        });
+    }
+
+    function exitSelectMode() {
+        isSelectMode = false;
+        selectedPhotos.clear();
+        galleryActionsDiv.style.display = 'none';
+        if (photos.length > 0) {
+            selectModeBtn.style.display = 'block';
+        }
+        document.querySelectorAll('.gallery-item').forEach(item => {
+            item.classList.remove('select-mode', 'selected');
+        });
+    }
+
+    async function shareSelectedPhotos() {
+        const files = [];
+        for (const id of selectedPhotos) {
+            const record = await dbGetPhoto(id);
+            if (record && record.blob) {
+                const meta = photos.find(p => p.id === id) || { id, timestamp: new Date().toISOString() };
+                const filename = getPhotoFilename(meta);
+                const file = new File([record.blob], filename, { type: record.blob.type || 'image/jpeg' });
+                files.push(file);
+            }
+        }
+
+        if (files.length === 0) {
+            showStatus('❌ No valid photos to share', 2500);
+            return;
+        }
+
+        if (navigator.share && navigator.canShare && navigator.canShare({ files })) {
+            try {
+                await navigator.share({
+                    files,
+                    title: `${files.length} Survey Photo(s)`,
+                    text: 'Photos from LIGHT LENS.'
+                });
+                showStatus('✓ Shared successfully', 2000);
+                exitSelectMode();
+            } catch (e) {
+                if (e.name !== 'AbortError') {
+                    console.error('Share failed:', e);
+                    showStatus('❌ Share failed', 2500);
+                }
+            }
+        } else {
+            showStatus('❌ Sharing not supported. Use Save instead.', 3000);
+        }
+    }
+
+    async function downloadSelectedPhotos() {
+        for (const id of selectedPhotos) {
+            const record = await dbGetPhoto(id);
+            if (record && record.blob) {
+                const meta = photos.find(p => p.id === id) || { id, timestamp: new Date().toISOString() };
+                const filename = getPhotoFilename(meta);
+                downloadBlob(record.blob, filename);
+                // Small delay between downloads to avoid browser blocking
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+        }
+        showStatus(`✓ Saved ${selectedPhotos.size} photo(s)`, 2000);
+        exitSelectMode();
+    }
+
+    async function deleteSelectedPhotos() {
+        for (const id of selectedPhotos) {
+            await dbDeletePhoto(id);
+            photos = photos.filter(p => p.id !== id);
+            if (lastCapturedPhotoId === id) lastCapturedPhotoId = null;
+            const url = photoObjectUrls.get(id);
+            if (url) {
+                URL.revokeObjectURL(url);
+                photoObjectUrls.delete(id);
+            }
+        }
+        updateGalleryUI();
+        renderGallery();
+        showStatus(`✓ Deleted ${selectedPhotos.size} photo(s)`, 2000);
+        exitSelectMode();
+    }
 
     function renderGallery() {
         galleryGrid.innerHTML = '';
         revokeAllPhotoObjectUrls();
 
+        if (photos.length === 0) {
+            selectModeBtn.style.display = 'none';
+            galleryGrid.innerHTML = '<div style="text-align:center;padding:40px;color:rgba(255,255,255,0.5);">No photos yet. Capture some!</div>';
+            return;
+        }
+
         photos.slice().reverse().forEach(async (photo) => {
             const item = document.createElement('div');
             item.className = 'gallery-item';
+            item.dataset.photoId = photo.id;
+            
+            if (isSelectMode) {
+                item.classList.add('select-mode');
+                if (selectedPhotos.has(photo.id)) {
+                    item.classList.add('selected');
+                }
+            }
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'gallery-item-checkbox';
+            checkbox.checked = selectedPhotos.has(photo.id);
             
             const img = document.createElement('img');
             img.alt = 'Survey photo';
@@ -1642,10 +1897,27 @@
             deleteBtn.innerHTML = '×';
             deleteBtn.onclick = (e) => {
                 e.stopPropagation();
-                deletePhoto(photo.id);
+                if (!isSelectMode) {
+                    deletePhoto(photo.id);
+                }
             };
             
             item.onclick = async () => {
+                if (isSelectMode) {
+                    // Toggle selection
+                    if (selectedPhotos.has(photo.id)) {
+                        selectedPhotos.delete(photo.id);
+                        item.classList.remove('selected');
+                        checkbox.checked = false;
+                    } else {
+                        selectedPhotos.add(photo.id);
+                        item.classList.add('selected');
+                        checkbox.checked = true;
+                    }
+                    return;
+                }
+
+                // Normal mode: share or download
                 try {
                     const record = await dbGetPhoto(photo.id);
                     if (!record || !record.blob) {
@@ -1666,8 +1938,11 @@
                 }
             };
             
+            item.appendChild(checkbox);
             item.appendChild(img);
-            item.appendChild(deleteBtn);
+            if (!isSelectMode) {
+                item.appendChild(deleteBtn);
+            }
             galleryGrid.appendChild(item);
         });
     }
