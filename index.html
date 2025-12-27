@@ -4,11 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="format-detection" content="telephone=no">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000">
     <link rel="manifest" href="manifest.json">
-    <base href="/Lens-Light/">
+    <link rel="icon" href="data:,">
     <title>LIGHT LENS</title>
     <style>
         /* 1. Basic Reset & Full Screen Video */
@@ -1181,6 +1182,7 @@
     // --- 1. INITIALIZATION ---
     async function initCamera() {
         try {
+            // Try with ideal constraints first
             const constraints = {
                 video: { 
                     facingMode: { ideal: "environment" },
@@ -1189,7 +1191,14 @@
                 } 
             };
             
-            videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+            } catch (e) {
+                console.warn("Failed with ideal constraints, trying fallback", e);
+                // Fallback to any video device
+                videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            }
+
             video.srcObject = videoStream;
             
             // Get video track for zoom
@@ -2053,20 +2062,25 @@
         const file = event.target.files[0];
         if (!file) return;
 
-        if (navigator.share && navigator.canShare({ files: [file] })) {
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
                 await navigator.share({
                     files: [file],
                     title: 'Survey Photo',
-                    text: 'Check out this photo from LIGHT LENS.'
+                    text: 'Photo from LIGHT LENS.'
                 });
-                showStatus('✓ Photo shared successfully', 2000);
+                showStatus('✓ Photo shared', 2000);
             } catch (error) {
-                console.error('Error sharing:', error);
-                showStatus('❌ Share failed', 3000);
+                if (error.name === 'NotAllowedError') {
+                    // Fallback: if share is blocked, we can't do much for an external file 
+                    // other than maybe showing it in the gallery, but it's already external.
+                    showStatus('❌ Share blocked by browser', 3000);
+                } else if (error.name !== 'AbortError') {
+                    showStatus('❌ Share failed', 3000);
+                }
             }
         } else {
-            showStatus('❌ Sharing not supported on this device', 3000);
+            showStatus('❌ Sharing not supported', 3000);
         }
         // Reset input
         fileInput.value = '';
