@@ -1,20 +1,98 @@
-const CACHE_NAME = 'survey-cam-v1';
+const CACHE_NAME = 'survey-cam-v6';
+// Keep this list limited to files that actually exist in the deployed folder.
 const ASSETS = [
   './',
   './index.html',
-  './manifest.json'
+  './manifest.json',
+  './sec-lens-logo.png',
+  './css/style.css',
+  './js/main.js',
+  './js/script.js',
+  './js/app/state.js',
+  './js/app/dom.js',
+  './js/app/core/utils.js',
+  './js/app/core/status.js',
+  './js/app/core/i18n.js',
+  './js/app/core/settings.js',
+  './js/app/storage/photoDb.js',
+  './js/app/gallery/gallery.js',
+  './js/app/camera/camera.js',
+  './js/app/sensors/sensors.js',
+  './js/app/pwa/pwa.js',
+  './js/app/ui/viewport.js',
+  './js/app/ui/features.js',
+  './js/app/ui/wakelock.js'
 ];
 
+// Install: Cache core assets immediately
 self.addEventListener('install', (event) => {
+  // Force this service worker to become the active one, bypassing the "waiting" state
+  self.skipWaiting();
+  
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then(async (cache) => {
+      // cache.addAll() fails the whole install if any single request fails.
+      // Cache assets one-by-one so missing files don't break the SW.
+      await Promise.allSettled(ASSETS.map((url) => cache.add(url)));
+    })
   );
 });
 
+// Activate: Clean up old caches and take control of clients
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cache) => {
+          if (cache !== CACHE_NAME) {
+            console.log('Deleting old cache:', cache);
+            return caches.delete(cache);
+          }
+        })
+      );
+    }).then(() => {
+      // Tell the service worker to take control of all open pages immediately
+      return self.clients.claim();
+    })
+  );
+});
+
+// Fetch: Network First, then Cache (Stale-While-Revalidate logic for offline support)
 self.addEventListener('fetch', (event) => {
+  // Skip cross-origin requests like Google Maps or Analytics if necessary, 
+  // but for this app we want to cache what we can.
+  const url = new URL(event.request.url);
+  
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => response || fetch(event.request))
+    fetch(event.request)
+      .then((response) => {
+        // If the response is valid, clone it and update the cache
+        if (!response || response.status !== 200 || response.type !== 'basic') {
+          return response;
+        }
+
+        // Only cache same-origin, GET, HTTP(S) requests.
+        // This avoids Cache.put() errors for unsupported schemes (e.g. chrome-extension://)
+        // and prevents caching third-party resources.
+        if (
+          event.request.method !== 'GET' ||
+          (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+          url.origin !== self.location.origin
+        ) {
+          return response;
+        }
+
+        const responseToCache = response.clone();
+        caches.open(CACHE_NAME)
+          .then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+
+        return response;
+      })
+      .catch(() => {
+        // If network fails (offline), try to serve from cache
+        return caches.match(event.request);
+      })
   );
 });
