@@ -1,71 +1,155 @@
-# Lens Light - Survey Camera App
+# Lens Light - Professional Survey Camera App
 
-A progressive web app (PWA) for capturing and surveying photos with GPS, compass, and altitude data.
+A progressive web app (PWA) for professional survey work with integrated GPS, compass, weather, and comprehensive sensor data capture.
 
-## Features
+## ✨ Features
 
-- 📷 High-quality photo capture with metadata
-- 🧭 Compass with heading detection
-- 📍 GPS location tracking with accuracy
-- 🔍 Digital zoom controls
-- 📱 Offline support (PWA)
-- 🎨 Beautiful glassmorphism UI
-- 📤 Photo sharing functionality
-- 💾 Local gallery storage
+### 📷 Camera Capabilities
+- High-quality photo capture with multiple filters (Normal, B&W, Sepia, Vintage, Vivid)
+- Digital zoom (1x - 3x)
+- Burst mode (up to 10 photos)
+- Self-timer (3s, 5s, 10s delays)
+- Flashlight/torch support
+- Exposure compensation (-2 to +2 EV)
+- Grid overlay and level indicator
+- Camera flip (front/back)
 
-## Deployment
+### 🧭 Sensors & Location
+- Real-time GPS coordinates with accuracy
+- Altitude tracking (meters/feet)
+- Compass heading with cardinal directions
+- Device orientation detection
+- Reverse geocoding (OpenStreetMap)
+- Weather data integration (Open-Meteo API)
 
-This project is deployed on GitHub Pages at:
-**<https://wolf19091.github.io/Lens-Light/>**
+### 🖼️ Gallery & Media
+- Photo storage in IndexedDB (no cloud upload)
+- Thumbnail grid with lazy loading
+- Full-size photo viewer
+- Multi-select mode
+- Photo comments/annotations
+- Share via native Web Share API
+- Download photos to device
+- Delete with confirmation
 
-### Deploy Your Own
+### ⚙️ Settings & Customization
+- Project naming
+- Custom location tags
+- Language support (English & العربية)
+- Image quality control
+- GPS watermark option
+- Camera sound toggle
+- Unit selection (metric/imperial)
+- Battery mode (reduced GPS update rate)
 
-1. **Create a GitHub Repository:**
-   - Go to <https://github.com/new>
-   - Name it `Lens-Light`
-   - Make it public
+### 📱 Mobile & PWA
+- Offline support via Service Worker
+- Installable on home screen
+- Full-screen app mode
+- Safe area support for notched devices
+- Screen wake lock during capture
+- Responsive design for all devices
 
-2. **Clone and Push:**
+## 🚀 Getting Started
 
+### Local Development
+
+1. Clone the repository:
    ```bash
-   cd path/to/your/project
-   git init
-   git add .
-   git commit -m "Initial commit: Lens Light camera app"
-   git branch -M main
-   git remote add origin https://github.com/YOUR_USERNAME/Lens-Light.git
-   git push -u origin main
+   git clone https://github.com/wolf19091/Lens-Light.git
+   cd Lens-Light
    ```
 
-3. **Enable GitHub Pages:**
-   - Go to your repo settings
-   - Navigate to Pages
+2. Start a local server:
+   ```bash
+   python -m http.server 8000
+   ```
+
+3. Open in browser:
+   ```
+   http://localhost:8000
+   ```
+
+### Deployment to GitHub Pages
+
+1. Push to your GitHub repository:
+   ```bash
+   git add .
+   git commit -m "Deploy latest version"
+   git push origin main
+   ```
+
+2. Enable GitHub Pages:
+   - Go to repository settings
+   - Navigate to **Pages**
    - Select `main` branch as source
    - Save
 
-4. **Access Your App:**
-   - Visit: `https://YOUR_USERNAME.github.io/Lens-Light/`
+3. Your app will be available at:
+   ```
+   https://YOUR_USERNAME.github.io/Lens-Light/
+   ```
 
-## Files
+### Using on Mobile
 
-- `index.html` - Main app with all functionality
-- `manifest.json` - PWA manifest
-- `sw.js` - Service worker for offline support
-- `.gitignore` - Git ignore rules
+1. Visit the app URL on your mobile device
+2. Tap browser menu → "Add to Home Screen" or "Install"
+3. Grant permissions for:
+   - Camera access
+   - Location (GPS)
+   - Motion & Orientation sensors
 
-## Tech Stack
+## 📁 Project Structure
 
-- HTML5
-- CSS3 (Glassmorphism, CSS Grid)
-- Vanilla JavaScript (ES6+)
-- Web APIs (Camera, Geolocation, Device Orientation, Wake Lock)
-- Service Worker (Offline support)
+```
+Lens-Light/
+├── index.html              # Main app HTML
+├── manifest.json           # PWA manifest
+├── sw.js                   # Service worker
+├── css/
+│   └── style.css          # Glassmorphism UI styles
+├── js/
+│   ├── main.js            # App bootstrap & event handlers
+│   ├── script.js          # Additional utilities
+│   └── app/
+│       ├── state.js       # Centralized app state
+│       ├── dom.js         # DOM element references
+│       ├── camera/
+│       │   └── camera.js  # Camera capture & zoom
+│       ├── sensors/
+│       │   └── sensors.js # GPS, compass, weather
+│       ├── gallery/
+│       │   └── gallery.js # Photo management
+│       ├── storage/
+│       │   └── photoDb.js # IndexedDB operations
+│       ├── pwa/
+│       │   └── pwa.js     # Service worker registration
+│       ├── ui/
+│       │   ├── features.js    # Feature toggles UI
+│       │   ├── viewport.js    # Responsive layout
+│       │   └── wakelock.js    # Screen wake lock
+│       └── core/
+│           ├── i18n.js       # Translations (EN/AR)
+│           ├── settings.js   # Settings management
+│           ├── status.js     # Status notifications
+│           └── utils.js      # Helper functions
+├── sec-lens-logo.png      # App icon
+├── README.md              # This file
+├── ENHANCEMENTS.md        # Future improvements
+└── .gitignore             # Git ignore rules
+```
 
-## Browser Requirements
+## 🔧 Tech Stack
 
-- Modern browser with WebGL, WebRTC, and Geolocation support
-- Recommended: iOS 14.5+, Android 10+
-
-## License
-
-Open source - Feel free to use and modify!
+- **Frontend**: HTML5, CSS3 (Glassmorphism), Vanilla JavaScript (ES6+)
+- **Storage**: IndexedDB for offline photo storage
+- **APIs**:
+  - MediaDevices API (camera access)
+  - Geolocation API (GPS)
+  - Device Orientation API (compass)
+  - Wake Lock API (screen management)
+  - Web Share API (sharing)
+- **PWA**: Service Worker for offline functionality
+- **External APIs**:
+  - OpenStreetMap Nominatim (reverse geocoding)
+  - Open-Meteo (weather data)
