@@ -82,7 +82,10 @@ export async function checkStorageQuota({ showStatus } = {}) {
 export async function initCamera(dom, { showStatus } = {}) {
   const requestId = ++state.initCameraRequestId;
 
-  if (dom?.shutterBtn) dom.shutterBtn.disabled = true;
+  if (dom?.shutterBtn) {
+    dom.shutterBtn.disabled = true;
+    dom.shutterBtn.setAttribute('aria-disabled', 'true');
+  }
 
   try {
     if (state.videoStream) {
@@ -134,7 +137,10 @@ export async function initCamera(dom, { showStatus } = {}) {
     localStorage.setItem('camera_granted', 'true');
 
     const ready = await ensureVideoReady(dom?.video);
-    if (dom?.shutterBtn) dom.shutterBtn.disabled = !ready;
+    if (dom?.shutterBtn) {
+      dom.shutterBtn.disabled = !ready;
+      dom.shutterBtn.setAttribute('aria-disabled', !ready ? 'true' : 'false');
+    }
     showStatus?.(ready ? t('cameraReady') : '⚠️ ' + t('videoNotReady'), ready ? 2000 : 3000);
 
     applyPreviewEffects(dom);
@@ -145,7 +151,10 @@ export async function initCamera(dom, { showStatus } = {}) {
     } else {
       console.error('initCamera failed', e);
     }
-    if (dom?.shutterBtn) dom.shutterBtn.disabled = true;
+    if (dom?.shutterBtn) {
+      dom.shutterBtn.disabled = true;
+      dom.shutterBtn.setAttribute('aria-disabled', 'true');
+    }
 
     if (e?.name === 'NotFoundError') {
       showStatus?.('❌ No camera device found', 5000);
