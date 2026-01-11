@@ -38,13 +38,36 @@ import {
 import { clamp } from './app/core/utils.js';
 import { startSensors, stopSensors, maybeUpdateCustomLocationFromWebFactory, updateWeatherDisplay } from './app/sensors/sensors.js';
 
+// Prevent multiple initialization
+if (window.__LENS_LIGHT_INITIALIZED__) {
+  console.warn('⚠️ Main.js already initialized, skipping duplicate run');
+} else {
+  window.__LENS_LIGHT_INITIALIZED__ = true;
+  initializeApp();
+}
+
+function initializeApp() {
+
 const dom = getDom();
 const { showStatus } = createStatus(dom.statusMsg);
+
+function warnIfElementCovered(el) {
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  const topEl = document.elementFromPoint(x, y);
+  if (!topEl) return;
+  if (topEl === el || el.contains(topEl)) return;
+  console.warn('shutter element may be covered by', topEl);
+}
 
 // Bootstrap helpers
 function checkStoredPermissionsAndBootstrap() {
   const cameraGranted = localStorage.getItem('camera_granted') === 'true';
   const sensorsGranted = localStorage.getItem('sensors_granted') === 'true';
+  
+  console.log('🚀 Bootstrap check:', { cameraGranted, sensorsGranted });
 
   if (cameraGranted && sensorsGranted) {
     if (dom.permBtn) dom.permBtn.style.display = 'none';
@@ -71,6 +94,31 @@ function checkStoredPermissionsAndBootstrap() {
 
 // Gallery observer
 const galleryObserver = createGalleryObserver(dom);
+
+// Double-tap to flip camera
+let lastTap = 0;
+dom.video?.parentElement?.addEventListener('click', (e) => {
+  const now = Date.now();
+  if (now - lastTap < 300) {
+    if (dom.flipCameraBtn && !dom.flipCameraBtn.disabled) {
+      dom.flipCameraBtn.click();
+      // Show small visual feedback
+      const rip = document.createElement('div');
+      rip.style.cssText = `
+        position: absolute; left: ${e.clientX}px; top: ${e.clientY}px;
+        width: 10px; height: 10px; border-radius: 50%;
+        background: rgba(255,255,255,0.8);
+        transform: translate(-50%, -50%);
+        pointer-events: none; animation: ripple 0.5s ease-out forwards;
+      `;
+      // We can insert styles for ripple dynamically or reuse existing if any
+      // Assuming CSS for ripple logic or inline simplistic
+      document.body.appendChild(rip);
+      setTimeout(() => rip.remove(), 500);
+    }
+  }
+  lastTap = now;
+});
 
 // Events wiring
 if (dom.permBtn) {
@@ -110,28 +158,57 @@ if (dom.permBtn) {
   });
 }
 
-// Capture
+// Capture - Shutter Button Click Handler
 if (dom.shutterBtn) {
-  dom.shutterBtn.addEventListener('click', () => {
-    if (state.featureState.timerDelay > 0) {
-      startTimerCapture(dom, {
-        showStatus,
-        onCaptured: () => updateGalleryUI(dom),
-        onBurstUi: (kind) => {
-          if (kind === 'count') {
-            const burstCounter = dom.burstIndicator?.querySelector('.burst-counter');
-            if (burstCounter) burstCounter.textContent = `${state.featureState.burstCount}/${state.featureState.maxBurstPhotos}`;
-          } else {
-            dom.burstBtn?.classList.remove('active');
-            dom.burstIndicator?.classList.remove('active');
+  console.log('✅ Shutter button listener attached');
+  
+  dom.shutterBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    console.log('📸 Shutter button clicked');
+
+    // Check if button is disabled
+    if (dom.shutterBtn.classList.contains('disabled')) {
+      // If camera is initializing, this is expected
+      console.log('ℹ️ Shutter clicked while camera initializing or disabled');
+      return;
+    }
+
+    // Check if capture already in progress
+    if (state.featureState.captureInProgress) {
+      console.warn('⚠️ Capture already in progress');
+      return;
+    }
+
+    console.log('📷 Taking photo...', { 
+      hasVideoStream: !!state.videoStream, 
+      timerDelay: state.featureState.timerDelay 
+    });
+
+    try {
+      // Timer mode: countdown before capture
+      if (state.featureState.timerDelay > 0) {
+        await startTimerCapture(dom, {
+          showStatus,
+          onCaptured: () => updateGalleryUI(dom),
+          onBurstUi: (kind) => {
+            if (kind === 'count') {
+              const burstCounter = dom.burstIndicator?.querySelector('.burst-counter');
+              if (burstCounter) burstCounter.textContent = `${state.featureState.burstCount}/${state.featureState.maxBurstPhotos}`;
+            } else {
+              dom.burstBtn?.classList.remove('active');
+              dom.burstIndicator?.classList.remove('active');
+            }
           }
-        }
-      });
-    } else {
-      performCapture(dom, {
+        });
+        return;
+      }
+
+      // Immediate capture
+      await performCapture(dom, {
         showStatus,
         onCaptured: async () => {
           updateGalleryUI(dom);
+          // Check storage quota periodically
           if (state.photos.length % 5 === 0) {
             await checkStorageQuota({ showStatus });
           }
@@ -146,8 +223,14 @@ if (dom.shutterBtn) {
           }
         }
       });
+    } catch (err) {
+      console.error('❌ Capture failed:', err);
+      showStatus('❌ Capture failed: ' + (err?.message || 'Unknown error'), 3500);
     }
   });
+} else {
+  alert('❌ ERROR: Shutter button NOT FOUND!');
+  console.error('❌ Shutter button NOT FOUND in DOM');
 }
 
 // Flip camera
@@ -491,8 +574,18 @@ updateAppVh();
 loadSettings(dom);
 applyFeatureUI(dom);
 
-await loadPhotos(dom);
-updateGalleryUI(dom);
+async function bootstrap() {
+  await loadPhotos(dom);
+  updateGalleryUI(dom);
+  checkStoredPermissionsAndBootstrap();
+  registerServiceWorker();
+}
 
-checkStoredPermissionsAndBootstrap();
-registerServiceWorker();
+bootstrap().catch((e) => {
+  console.error('bootstrap failed', e);
+  try {
+    showStatus('❌ App init failed: ' + (e?.message || 'Unknown'), 5000);
+  } catch {}
+});
+
+} // end initializeApp

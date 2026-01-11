@@ -79,6 +79,25 @@ body {
     height: calc(var(--app-vh, 1vh) * 100);
 }
 
+.empty-gallery-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 200px;
+    color: var(--text-faint);
+    text-align: center;
+    gap: 16px;
+    font-size: 16px;
+}
+
+.empty-gallery-state::before {
+    content: "📷";
+    font-size: 48px;
+    opacity: 0.5;
+}
+
 /* ===================================================================
    3. CUSTOM SCROLLBAR
    =================================================================== */
@@ -148,6 +167,11 @@ body::after {
 @keyframes gradientShift {
     0%, 100% { opacity: 0.3; }
     50% { opacity: 0.6; }
+}
+
+@keyframes ripple {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 0.8; }
+    100% { transform: translate(-50%, -50%) scale(10); opacity: 0; }
 }
 
 /* Flash Effect */
@@ -261,6 +285,12 @@ body::after {
     text-transform: uppercase;
     pointer-events: none;
     backdrop-filter: blur(10px);
+}
+
+#topbar .pill.warning {
+    background: rgba(255, 149, 0, 0.25);
+    border-color: #ff9f0a;
+    box-shadow: 0 0 15px rgba(255, 159, 10, 0.3);
 }
 
 /* ===================================================================
@@ -1033,6 +1063,22 @@ body::after {
     box-shadow: 
         0 8px 24px rgba(0,0,0,0.4), 
         inset 0 0 0 2px rgba(0,0,0,0.15),
+        0 0 0 1px rgba(0,0,0,0.05);
+}
+
+/* Shutter Button Disabled State */
+#shutter-btn.disabled {
+    opacity: 0.5;
+    filter: grayscale(100%);
+    cursor: not-allowed;
+}
+
+#shutter-btn.disabled:hover,
+#shutter-btn.disabled:active {
+    transform: none;
+    box-shadow: 
+        var(--shadow-lg),
+        inset 0 0 0 2px rgba(0,0,0,0.1),
         0 0 0 1px rgba(0,0,0,0.05);
 }
 

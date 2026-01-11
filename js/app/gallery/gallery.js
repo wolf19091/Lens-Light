@@ -178,7 +178,7 @@ export function renderGallery(dom, galleryObserver, { showStatus } = {}) {
 
   if (state.photos.length === 0) {
     if (dom?.selectModeBtn) dom.selectModeBtn.style.display = 'none';
-    dom.galleryGrid.innerHTML = `<div style="text-align:center;padding:40px;color:rgba(255,255,255,0.5);">${t('noPhotos')}</div>`;
+    dom.galleryGrid.innerHTML = `<div class="empty-gallery-state">${t('noPhotos')}</div>`;
     return;
   }
 

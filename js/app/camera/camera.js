@@ -82,7 +82,7 @@ export async function checkStorageQuota({ showStatus } = {}) {
 export async function initCamera(dom, { showStatus } = {}) {
   const requestId = ++state.initCameraRequestId;
 
-  if (dom?.shutterBtn) dom.shutterBtn.disabled = true;
+  if (dom?.shutterBtn) dom.shutterBtn.classList.add('disabled');
 
   try {
     if (state.videoStream) {
@@ -134,7 +134,7 @@ export async function initCamera(dom, { showStatus } = {}) {
     localStorage.setItem('camera_granted', 'true');
 
     const ready = await ensureVideoReady(dom?.video);
-    if (dom?.shutterBtn) dom.shutterBtn.disabled = !ready;
+    if (dom?.shutterBtn) dom.shutterBtn.classList.toggle('disabled', !ready);
     showStatus?.(ready ? t('cameraReady') : '⚠️ ' + t('videoNotReady'), ready ? 2000 : 3000);
 
     applyPreviewEffects(dom);
@@ -145,7 +145,7 @@ export async function initCamera(dom, { showStatus } = {}) {
     } else {
       console.error('initCamera failed', e);
     }
-    if (dom?.shutterBtn) dom.shutterBtn.disabled = true;
+    if (dom?.shutterBtn) dom.shutterBtn.classList.add('disabled');
 
     if (e?.name === 'NotFoundError') {
       showStatus?.('❌ No camera device found', 5000);
@@ -467,12 +467,20 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
 }
 
 export async function performCapture(dom, { showStatus, onCaptured, onBurstUi } = {}) {
-  if (state.featureState.captureInProgress) return;
+  console.log('📸 performCapture called');
+  
+  if (state.featureState.captureInProgress) {
+    console.warn('Capture already in progress');
+    return;
+  }
 
   if (!state.videoStream) {
+    console.error('❌ No video stream - camera not initialized');
     showStatus?.('❌ ' + t('videoNotReady'), 2500);
     return;
   }
+  
+  console.log('Starting capture...');
 
   try {
     state.featureState.captureInProgress = true;

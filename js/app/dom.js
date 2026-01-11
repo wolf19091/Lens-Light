@@ -67,6 +67,8 @@ export function getDom() {
     toggleData: $('toggle-data'),
     toggleWatermark: $('toggle-watermark'),
     toggleSound: $('toggle-sound'),
+    toggleBattery: $('toggle-battery'),
+    batteryModeIndicator: $('battery-mode-indicator'),
     clearAllDataBtn: $('clear-all-data-btn'),
 
     // gallery modal

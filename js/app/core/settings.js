@@ -27,6 +27,9 @@ export function loadSettings(dom) {
   if (dom?.toggleData) dom.toggleData.checked = Boolean(state.settings.showData);
   if (dom?.toggleWatermark) dom.toggleWatermark.checked = Boolean(state.settings.watermark);
   if (dom?.toggleSound) dom.toggleSound.checked = state.settings.cameraSound !== false;
+  
+  if (dom?.toggleBattery) dom.toggleBattery.checked = Boolean(state.settings.batteryMode);
+  if (dom?.batteryModeIndicator) dom.batteryModeIndicator.style.display = state.settings.batteryMode ? 'inline-flex' : 'none';
 
   setLanguage(state.settings.language || 'en', dom);
 
@@ -41,9 +44,13 @@ export function loadSettings(dom) {
 }
 
 export function bindSettingsUi(dom, { showStatus, updateWeatherDisplay, renderGallery, revokeAllPhotoObjectUrls, clearAllPhotos, updateGalleryUI, loadSettings: reloadSettings } = {}) {
-  dom?.settingsBtn?.addEventListener('click', () => dom.settingsPanel?.classList.add('open'));
+  dom?.settingsBtn?.addEventListener('click', () => {
+    dom.settingsPanel?.classList.add('open');
+    dom.settingsPanel?.setAttribute('aria-hidden', 'false');
+  });
   dom?.closeSettingsBtn?.addEventListener('click', () => {
     dom.settingsPanel?.classList.remove('open');
+    dom.settingsPanel?.setAttribute('aria-hidden', 'true');
     saveSettings();
   });
 
@@ -101,6 +108,21 @@ export function bindSettingsUi(dom, { showStatus, updateWeatherDisplay, renderGa
   dom?.toggleSound?.addEventListener('change', (e) => {
     state.settings.cameraSound = e.target.checked;
     saveSettings();
+  });
+
+  dom?.toggleBattery?.addEventListener('change', (e) => {
+    state.settings.batteryMode = e.target.checked;
+    if (dom?.batteryModeIndicator) {
+        dom.batteryModeIndicator.style.display = state.settings.batteryMode ? 'inline-flex' : 'none';
+    }
+    // Reload sensors if needed to apply battery mode (update gps interval)
+    // We can't cleanly restart sensors from here easily without importing from sensors.js which might cause cycle.
+    // However, sensors.js checks state.settings.batteryMode on next watch, but watchPosition interval is fixed.
+    // For now, simpler is to let it apply on next app restart or sensor restart.
+    // Ideally we should emit an event or call functionality to restart sensors.
+    saveSettings();
+    // Prompt user to restart if they want immediate effect is the easy way
+    // or just let it be.
   });
 
   dom?.clearAllDataBtn?.addEventListener('click', async () => {

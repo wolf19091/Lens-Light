@@ -60,6 +60,7 @@
             </div>
         </div>
         <div class="topbar-right">
+            <span class="pill warning" id="battery-mode-indicator" style="display:none;" aria-label="Battery Saving Mode">🔋 SAVER</span>
             <span class="pill" id="ui-badge">LIVE</span>
         </div>
     </div>
@@ -145,7 +146,7 @@
             📷
             <span id="photo-count" style="display: none;" aria-label="Photo count">0</span>
         </button>
-        <button id="shutter-btn" aria-label="Take photo" type="button"></button>
+        <button id="shutter-btn" aria-label="Take photo" type="button" class="disabled"></button>
         <button id="settings-btn" aria-label="Settings" type="button">⚙️</button>
         <button id="flip-camera-btn" title="Switch Camera" aria-label="Switch camera" type="button">🔄</button>
         <button id="share-btn" aria-label="Share photo" type="button">📤</button>
@@ -229,6 +230,16 @@
                 <span id="label-camera-sound">🔊 Camera Sound</span>
                 <label class="toggle-switch">
                     <input type="checkbox" id="toggle-sound" checked aria-label="Camera sound">
+                    <span class="slider"></span>
+                </label>
+            </label>
+        </div>
+
+        <div class="setting-item">
+            <label style="display: flex; justify-content: space-between; align-items: center;">
+                <span id="label-battery-mode">🔋 Battery Saver</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-battery" aria-label="Battery saver mode">
                     <span class="slider"></span>
                 </label>
             </label>
