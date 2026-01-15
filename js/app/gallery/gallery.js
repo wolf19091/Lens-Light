@@ -214,7 +214,7 @@ export function renderGallery(dom, galleryObserver, { showStatus } = {}) {
       if (!state.isSelectMode) deletePhoto(photo.id, dom, { showStatus }, galleryObserver);
     };
 
-    item.onclick = () => {
+    item.onclick = async () => {
       if (state.isSelectMode) {
         const next = !state.selectedPhotos.has(photo.id);
         if (next) state.selectedPhotos.add(photo.id);
@@ -223,6 +223,15 @@ export function renderGallery(dom, galleryObserver, { showStatus } = {}) {
         item.classList.toggle('selected', next);
         checkbox.checked = next;
         updateSelectAllButton(dom);
+        
+        // Update comparison button
+        try {
+          const { updateComparisonButton } = await import('../features/comparison.js');
+          updateComparisonButton();
+        } catch (e) {
+          // Module not loaded yet
+        }
+        
         return;
       }
       openPhotoViewer(photo.id, dom, { showStatus });

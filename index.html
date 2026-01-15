@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000">
     <meta name="description" content="Professional camera app for survey and field work with GPS, compass, and sensor integration">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data: https:; connect-src 'self' https://nominatim.openstreetmap.org https://api.open-meteo.com; worker-src 'self'; manifest-src 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data: https:; connect-src 'self' https://nominatim.openstreetmap.org https://api.open-meteo.com; worker-src 'self'; manifest-src 'self'">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" href="sec-lens-logo.png">
     <link rel="apple-touch-icon" href="sec-lens-logo.png">
@@ -24,6 +24,9 @@
 
     <!-- Flash Effect -->
     <div id="flash" aria-hidden="true"></div>
+    
+    <!-- Focus Ring -->
+    <div id="focus-ring" aria-hidden="true"></div>
     
     <!-- Grid Overlay -->
     <div id="grid-overlay" class="active" aria-hidden="true">
@@ -113,6 +116,10 @@
             <button class="feature-btn" id="filter-btn" title="Filters" aria-label="Photo filters" aria-haspopup="true" aria-expanded="false" type="button">🎨</button>
             <button class="feature-btn" id="exposure-btn" title="Exposure" aria-label="Exposure control" aria-pressed="false" type="button">☀️</button>
             <button class="feature-btn" id="burst-btn" title="Burst Mode" aria-label="Toggle burst mode" aria-pressed="false" type="button">📸</button>
+            <button class="feature-btn" id="focus-btn" title="Tap to Focus" aria-label="Enable tap to focus" aria-pressed="false" type="button">🎯</button>
+            <button class="feature-btn" id="wb-btn" title="White Balance" aria-label="White balance control" aria-pressed="false" type="button">🌡️</button>
+            <button class="feature-btn" id="hdr-btn" title="HDR Mode" aria-label="Toggle HDR mode" aria-pressed="false" type="button">✨</button>
+            <button class="feature-btn" id="qr-btn" title="QR Scanner" aria-label="Open QR code scanner" type="button">⊡</button>
         </div>
 
         <!-- Timer Menu -->
@@ -137,6 +144,13 @@
             <span class="exposure-label" aria-hidden="true">☀️</span>
             <input type="range" id="exposure-slider" min="-2" max="2" step="0.1" value="0" aria-label="Exposure compensation" aria-valuemin="-2" aria-valuemax="2" aria-valuenow="0">
             <span class="exposure-label" aria-hidden="true">🌙</span>
+        </div>
+        
+        <!-- White Balance Control -->
+        <div id="wb-control" role="group" aria-label="White balance adjustment">
+            <span class="wb-label" aria-hidden="true">🔵</span>
+            <input type="range" id="wb-slider" min="2000" max="8000" step="100" value="5500" aria-label="Color temperature" aria-valuemin="2000" aria-valuemax="8000" aria-valuenow="5500">
+            <span class="wb-label" aria-hidden="true">🟠</span>
         </div>
     </div>
 
@@ -245,6 +259,36 @@
             </label>
         </div>
         
+        <div class="setting-item">
+            <label for="timestamp-format" id="label-timestamp">🕐 Timestamp Format</label>
+            <select id="timestamp-format" aria-describedby="label-timestamp">
+                <option value="iso">ISO 8601 (2026-01-15T10:30:00)</option>
+                <option value="us">US (01/15/2026 10:30 AM)</option>
+                <option value="eu">EU (15/01/2026 10:30)</option>
+                <option value="arabic">Arabic (١٥/٠١/٢٠٢٦)</option>
+            </select>
+        </div>
+        
+        <div class="setting-item">
+            <label style="display: flex; justify-content: space-between; align-items: center;">
+                <span id="label-hdr">✨ HDR Mode</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-hdr" aria-label="HDR mode">
+                    <span class="slider"></span>
+                </label>
+            </label>
+        </div>
+        
+        <div class="setting-item">
+            <label style="display: flex; justify-content: space-between; align-items: center;">
+                <span id="label-focus-assist">🎯 Focus Assist</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-focus-assist" checked aria-label="Focus assist">
+                    <span class="slider"></span>
+                </label>
+            </label>
+        </div>
+        
         <div class="setting-item" style="border-bottom: none;">
             <button class="clear-data-btn" id="clear-all-data-btn" type="button">
                 <span id="label-clear-data">🗑️ Clear All Data</span>
@@ -266,9 +310,43 @@
             <button class="action-btn" id="share-selected-btn" type="button">📤 Share Selected</button>
             <button class="action-btn" id="download-selected-btn" type="button">💾 Save Selected</button>
             <button class="action-btn" id="delete-selected-btn" type="button">🗑️ Delete Selected</button>
+            <button class="action-btn" id="compare-photos-btn" type="button" disabled>🔍 Compare (2)</button>
+            <button class="action-btn" id="export-metadata-btn" type="button">📊 Export Metadata</button>
             <button class="action-btn" id="cancel-select-btn" type="button">Cancel</button>
         </div>
         <div class="gallery-grid" id="gallery-grid" role="list" aria-label="Photo gallery"></div>
+    </div>
+
+    <!-- QR Scanner -->
+    <div id="qr-scanner" role="dialog" aria-labelledby="qr-scanner-title" aria-hidden="true">
+        <div class="gallery-header">
+            <h2 id="qr-scanner-title">⊡ QR Code Scanner</h2>
+            <button class="close-btn" id="close-qr-scanner" aria-label="Close QR scanner" type="button">Close</button>
+        </div>
+        <div id="qr-scanner-viewport">
+            <canvas id="qr-canvas" style="display:none;"></canvas>
+            <div class="qr-scan-frame"></div>
+            <div id="qr-result" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- Photo Comparison Mode -->
+    <div id="comparison-mode" role="dialog" aria-labelledby="comparison-title" aria-hidden="true">
+        <div class="gallery-header">
+            <h2 id="comparison-title">🔍 Compare Photos</h2>
+            <button class="close-btn" id="close-comparison" aria-label="Close comparison" type="button">Close</button>
+        </div>
+        <div class="comparison-container">
+            <div class="comparison-photo" id="comparison-left">
+                <img alt="First photo" />
+                <div class="photo-label">Photo 1</div>
+            </div>
+            <div class="comparison-divider"></div>
+            <div class="comparison-photo" id="comparison-right">
+                <img alt="Second photo" />
+                <div class="photo-label">Photo 2</div>
+            </div>
+        </div>
     </div>
 
     <!-- Photo Viewer -->
@@ -293,6 +371,9 @@
 
     <!-- Hidden Canvas for Image Processing -->
     <canvas id="hidden-canvas" style="display:none;" aria-hidden="true"></canvas>
+
+    <!-- QR Code Scanner Library -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
     <script type="module" src="js/main.js" defer></script>
 </body>

@@ -31,6 +31,15 @@ export function loadSettings(dom) {
   if (dom?.toggleBattery) dom.toggleBattery.checked = Boolean(state.settings.batteryMode);
   if (dom?.batteryModeIndicator) dom.batteryModeIndicator.style.display = state.settings.batteryMode ? 'inline-flex' : 'none';
 
+  // NEW SETTINGS
+  const toggleHdr = document.getElementById('toggle-hdr');
+  const toggleFocusAssist = document.getElementById('toggle-focus-assist');
+  const timestampFormat = document.getElementById('timestamp-format');
+  
+  if (toggleHdr) toggleHdr.checked = Boolean(state.settings.hdrMode);
+  if (toggleFocusAssist) toggleFocusAssist.checked = state.settings.focusAssist !== false;
+  if (timestampFormat) timestampFormat.value = state.settings.timestampFormat || 'iso';
+
   setLanguage(state.settings.language || 'en', dom);
 
   if (dom?.compassContainer) dom.compassContainer.style.display = state.settings.showCompass ? 'flex' : 'none';
@@ -115,14 +124,28 @@ export function bindSettingsUi(dom, { showStatus, updateWeatherDisplay, renderGa
     if (dom?.batteryModeIndicator) {
         dom.batteryModeIndicator.style.display = state.settings.batteryMode ? 'inline-flex' : 'none';
     }
-    // Reload sensors if needed to apply battery mode (update gps interval)
-    // We can't cleanly restart sensors from here easily without importing from sensors.js which might cause cycle.
-    // However, sensors.js checks state.settings.batteryMode on next watch, but watchPosition interval is fixed.
-    // For now, simpler is to let it apply on next app restart or sensor restart.
-    // Ideally we should emit an event or call functionality to restart sensors.
     saveSettings();
-    // Prompt user to restart if they want immediate effect is the easy way
-    // or just let it be.
+  });
+
+  // NEW SETTINGS EVENT LISTENERS
+  const toggleHdr = document.getElementById('toggle-hdr');
+  const toggleFocusAssist = document.getElementById('toggle-focus-assist');
+  const timestampFormat = document.getElementById('timestamp-format');
+  
+  toggleHdr?.addEventListener('change', (e) => {
+    state.settings.hdrMode = e.target.checked;
+    state.featureState.hdrMode = e.target.checked;
+    saveSettings();
+  });
+  
+  toggleFocusAssist?.addEventListener('change', (e) => {
+    state.settings.focusAssist = e.target.checked;
+    saveSettings();
+  });
+  
+  timestampFormat?.addEventListener('change', (e) => {
+    state.settings.timestampFormat = e.target.value;
+    saveSettings();
   });
 
   dom?.clearAllDataBtn?.addEventListener('click', async () => {

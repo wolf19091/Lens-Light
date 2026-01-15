@@ -5,6 +5,7 @@ A progressive web app (PWA) for professional survey work with integrated GPS, co
 ## ✨ Features
 
 ### 📷 Camera Capabilities
+
 - High-quality photo capture with multiple filters (Normal, B&W, Sepia, Vintage, Vivid)
 - Digital zoom (1x - 3x)
 - Burst mode (up to 10 photos)
@@ -13,16 +14,22 @@ A progressive web app (PWA) for professional survey work with integrated GPS, co
 - Exposure compensation (-2 to +2 EV)
 - Grid overlay and level indicator
 - Camera flip (front/back)
+- **🎯 Tap-to-Focus** - Touch screen to focus on specific areas
+- **🌡️ White Balance Control** - Adjust color temperature (2000K-8000K)
+- **✨ HDR Mode** - High Dynamic Range capture with exposure bracketing
 
 ### 🧭 Sensors & Location
+
 - Real-time GPS coordinates with accuracy
 - Altitude tracking (meters/feet)
 - Compass heading with cardinal directions
 - Device orientation detection
 - Reverse geocoding (OpenStreetMap)
 - Weather data integration (Open-Meteo API)
+- **⊡ QR Code Scanner** - Scan QR codes for equipment IDs or location markers
 
 ### 🖼️ Gallery & Media
+
 - Photo storage in IndexedDB (no cloud upload)
 - Thumbnail grid with lazy loading
 - Full-size photo viewer
@@ -31,8 +38,11 @@ A progressive web app (PWA) for professional survey work with integrated GPS, co
 - Share via native Web Share API
 - Download photos to device
 - Delete with confirmation
+- **🔍 Photo Comparison** - Side-by-side comparison of two photos
+- **📊 Metadata Export** - Export photo data as CSV/JSON for reports
 
 ### ⚙️ Settings & Customization
+
 - Project naming
 - Custom location tags
 - Language support (English & العربية)
@@ -41,6 +51,9 @@ A progressive web app (PWA) for professional survey work with integrated GPS, co
 - Camera sound toggle
 - Unit selection (metric/imperial)
 - Battery mode (reduced GPS update rate)
+- **Timestamp formats** - ISO, US, EU, Arabic formats
+- **Focus assist** - Visual focus ring indicator
+- **HDR toggle** - Enable/disable HDR mode
 
 ### 📱 Mobile & PWA
 - Offline support via Service Worker

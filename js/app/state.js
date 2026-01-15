@@ -17,7 +17,10 @@ export const state = {
     watermark: false,
     cameraSound: true,
     cameraFacingMode: 'environment',
-    batteryMode: false
+    batteryMode: false,
+    focusAssist: true,
+    hdrMode: false,
+    timestampFormat: 'iso'
   },
 
   // feature state
@@ -32,8 +35,15 @@ export const state = {
     burstCount: 0,
     maxBurstPhotos: 10,
     captureInProgress: false,
-    countdownIntervalId: null
+    countdownIntervalId: null,
+    hdrMode: false
   },
+
+  // NEW FEATURES STATE
+  whiteBalanceTemp: 5500,
+  whiteBalanceRGB: { r: 1, g: 1, b: 1 },
+  lastQRCode: null,
+  lastQRCodeTimestamp: null,
 
   // camera
   videoStream: null,

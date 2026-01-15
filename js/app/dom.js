@@ -48,6 +48,15 @@ export function getDom() {
     burstBtn: $('burst-btn'),
     burstIndicator: $('burst-indicator'),
 
+    // NEW FEATURES
+    focusRing: $('focus-ring'),
+    focusBtn: $('focus-btn'),
+    wbControl: $('wb-control'),
+    wbSlider: $('wb-slider'),
+    wbBtn: $('wb-btn'),
+    hdrBtn: $('hdr-btn'),
+    qrBtn: $('qr-btn'),
+
     // main controls
     galleryBtn: $('gallery-btn'),
     settingsBtn: $('settings-btn'),

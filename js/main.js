@@ -38,6 +38,14 @@ import {
 import { clamp } from './app/core/utils.js';
 import { startSensors, stopSensors, maybeUpdateCustomLocationFromWebFactory, updateWeatherDisplay } from './app/sensors/sensors.js';
 
+// NEW FEATURES
+import { initTapToFocus } from './app/features/focus.js';
+import { initWhiteBalance } from './app/features/whitebalance.js';
+import { initQRScanner } from './app/features/qrscanner.js';
+import { initPhotoComparison, updateComparisonButton } from './app/features/comparison.js';
+import { initMetadataExport } from './app/features/metadata.js';
+import { initHDRToggle } from './app/features/hdr.js';
+
 // Prevent multiple initialization
 if (window.__LENS_LIGHT_INITIALIZED__) {
   console.warn('⚠️ Main.js already initialized, skipping duplicate run');
@@ -573,6 +581,16 @@ window.addEventListener('orientationchange', updateAppVh);
 updateAppVh();
 loadSettings(dom);
 applyFeatureUI(dom);
+
+// Initialize new features
+console.log('🎯 Initializing advanced features...');
+initTapToFocus(dom, dom.video);
+initWhiteBalance(dom);
+initQRScanner(dom);
+initPhotoComparison(dom);
+initMetadataExport(dom);
+initHDRToggle(dom);
+console.log('✅ Advanced features initialized');
 
 async function bootstrap() {
   await loadPhotos(dom);

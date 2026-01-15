@@ -30,15 +30,22 @@ function playCameraShutter() {
   playBeep(1200, 0.05, 0.12);
 }
 
-async function ensureVideoReady(video, timeoutMs = 2500) {
+async function ensureVideoReady(video, timeoutMs = 2000) {
   if (!video) return false;
-  if (video.videoWidth && video.videoHeight) return true;
+  if (video.videoWidth && video.videoHeight) {
+     console.log('✅ Camera ready (immediate):', video.videoWidth, 'x', video.videoHeight);
+     return true;
+  }
+  if (video.readyState >= 3) { // HAVE_FUTURE_DATA
+     console.log('✅ Camera ready (readyState):', video.readyState);
+     return true;
+  }
 
   try {
     // Some browsers require an explicit play() after setting srcObject.
     await video.play();
-  } catch {
-    // ignore
+  } catch (err) {
+    console.warn('Video play() failed (might be auto-playing):', err);
   }
 
   return await new Promise((resolve) => {
@@ -49,14 +56,25 @@ async function ensureVideoReady(video, timeoutMs = 2500) {
       clearTimeout(timerId);
       video.removeEventListener('loadedmetadata', onReady);
       video.removeEventListener('canplay', onReady);
+      video.removeEventListener('playing', onReady);
+
+      // Final check: even if we timed out, is the video actually ready?
+      if (!ok && (video.readyState >= 3 || (video.videoWidth && video.videoHeight))) {
+        console.log('✅ Camera ready (recovered from timeout):', video.readyState, video.videoWidth, 'x', video.videoHeight);
+        ok = true;
+      }
+
+      if (ok) console.log('✅ Camera ready (event/poll):', video.videoWidth, 'x', video.videoHeight);
+      else console.warn('⚠️ Camera initialization timed out', video.readyState, video.error);
       resolve(ok);
     };
 
-    const onReady = () => finish(Boolean(video.videoWidth && video.videoHeight));
+    const onReady = () => finish(Boolean((video.videoWidth && video.videoHeight) || video.readyState >= 3));
     const timerId = setTimeout(() => finish(false), timeoutMs);
 
     video.addEventListener('loadedmetadata', onReady, { once: true });
     video.addEventListener('canplay', onReady, { once: true });
+    video.addEventListener('playing', onReady, { once: true });
   });
 }
 
@@ -258,21 +276,31 @@ async function ensureLogoLoaded(timeoutMs = 1000) {
 }
 
 function addWatermarkToCanvas(ctx, width, height) {
-  const fontSize = Math.max(16, width * 0.018);
-  const padding = fontSize * 1.2;
-  const logoSize = Math.max(50, width * 0.08);
+  const fontSize = Math.max(14, width * 0.015);
+  const padding = fontSize * 1.5;
+  const logoSize = Math.max(40, width * 0.055); // Smaller logo for cleaner look
 
   if (logoImg.naturalWidth > 0) {
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.5)';
-    ctx.shadowBlur = 12;
+    // Subtle shadow for logo depth
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 2;
     ctx.drawImage(logoImg, padding, padding, logoSize, logoSize);
     ctx.restore();
 
-    ctx.font = `700 ${fontSize * 1.2}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    // Brand text with matching shadow
+    ctx.save();
+    ctx.font = `700 ${fontSize * 1.15}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
     ctx.textAlign = 'left';
-    ctx.fillText('LENS LIGHT', padding + logoSize + fontSize * 0.7, padding + logoSize / 2 + fontSize * 0.35);
+    ctx.shadowColor = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 1;
+    ctx.fillText('LENS LIGHT', padding + logoSize + fontSize * 0.8, padding + logoSize / 2 + fontSize * 0.35);
+    ctx.restore();
   }
 }
 
@@ -308,6 +336,42 @@ function applyFilterToImageData(imageData, filter) {
   }
 }
 
+function sharpenImageData(imageData, amount = 0.2) {
+  const data = imageData.data;
+  const w = imageData.width;
+  const h = imageData.height;
+  const weights = [0, -1, 0, -1, 5, -1, 0, -1, 0]; // Sharpening kernel
+  const side = Math.round(Math.sqrt(weights.length));
+  const halfSide = Math.floor(side / 2);
+  const output = new Uint8ClampedArray(data);
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const dstOff = (y * w + x) * 4;
+      let r = 0, g = 0, b = 0;
+
+      for (let cy = 0; cy < side; cy++) {
+        for (let cx = 0; cx < side; cx++) {
+          const scy = Math.min(h - 1, Math.max(0, y + cy - halfSide));
+          const scx = Math.min(w - 1, Math.max(0, x + cx - halfSide));
+          const srcOff = (scy * w + scx) * 4;
+          const wt = weights[cy * side + cx];
+          r += data[srcOff] * wt;
+          g += data[srcOff + 1] * wt;
+          b += data[srcOff + 2] * wt;
+        }
+      }
+
+      // Blend original with sharpened based on amount
+      output[dstOff] = data[dstOff] + (r - data[dstOff]) * amount;
+      output[dstOff + 1] = data[dstOff + 1] + (g - data[dstOff + 1]) * amount;
+      output[dstOff + 2] = data[dstOff + 2] + (b - data[dstOff + 2]) * amount;
+    }
+  }
+
+  data.set(output);
+}
+
 export function formatAltitude(altMeters) {
   if (!altMeters || !Number.isFinite(altMeters)) return state.settings.units === 'imperial' ? '-- ft' : '-- m';
   if (state.settings.units === 'imperial') return `${Math.round(altMeters * 3.28084)} ft`;
@@ -315,19 +379,20 @@ export function formatAltitude(altMeters) {
 }
 
 function drawDataOverlay(ctx, canvas) {
-  const fontSize = Math.max(canvas.width / 40, 16);
-  const padding = fontSize * 1.2;
-  const lineHeight = fontSize * 1.4;
+  // Scale font size appropriately for output resolution
+  const fontSize = Math.max(Math.min(canvas.width / 48, 26), 15);
+  const padding = fontSize * 1.5;
+  const lineHeight = fontSize * 1.6;
 
-  const panelWidth = canvas.width * 0.46;
-  const panelHeight = lineHeight * 6.5;
-  const x = canvas.width - panelWidth - padding;
-  const y = canvas.height - panelHeight - padding;
+  const panelWidth = Math.min(canvas.width * 0.52, canvas.width - padding * 2);
+  const panelHeight = lineHeight * 7.2;
+  const x = canvas.width - panelWidth - padding * 0.8;
+  const y = canvas.height - panelHeight - padding * 0.8;
 
   ctx.save();
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
-  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-  ctx.lineWidth = 2;
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+  ctx.lineWidth = 2.5;
 
   const r = 14;
   ctx.beginPath();
@@ -344,12 +409,20 @@ function drawDataOverlay(ctx, canvas) {
   ctx.fill();
   ctx.stroke();
 
-  ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  // Enable high-quality text rendering
+  ctx.textBaseline = 'top';
+  ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,1.0)';
   ctx.textAlign = 'left';
+  
+  // No shadow - crisp text on dark background
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
 
   const now = new Date();
-  let yy = y + padding + fontSize;
+  let yy = y + padding * 0.9;
   const project = state.settings.projectName ? `Project: ${state.settings.projectName}` : '';
 
   const lines = [
@@ -365,6 +438,12 @@ function drawDataOverlay(ctx, canvas) {
     ctx.fillText(line, x + padding, yy);
     yy += lineHeight;
   }
+
+  // Clear shadow to prevent affecting other drawings
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
 
   ctx.restore();
 }
@@ -413,23 +492,133 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
 
   const ctx = dom.canvas.getContext('2d', { alpha: false });
 
-  playCameraShutter();
+  // Check if HDR mode is enabled
+  if (state.featureState.hdrMode) {
+    // Import HDR capture dynamically
+    try {
+      const { captureHDR } = await import('../features/hdr.js');
+      
+      playCameraShutter();
+      
+      if (dom?.flash) {
+        dom.flash.classList.add('active');
+        setTimeout(() => dom.flash.classList.remove('active'), 350);
+      }
+      
+      const result = await captureHDR(dom.video, dom.canvas, showStatus);
+      if (!result) {
+        // HDR failed, fall back to normal capture
+        console.warn('HDR capture failed, using normal mode');
+      } else {
+        // HDR capture successful - the canvas already has the merged image
+        // Continue with normal watermark and overlay processing below
+      }
+    } catch (err) {
+      console.error('HDR module error:', err);
+      // Fall back to normal capture
+    }
+  } else {
+    // Normal capture mode
+    playCameraShutter();
 
-  if (dom?.flash) {
-    dom.flash.classList.add('active');
-    setTimeout(() => dom.flash.classList.remove('active'), 350);
+    if (dom?.flash) {
+      dom.flash.classList.add('active');
+      setTimeout(() => dom.flash.classList.remove('active'), 350);
+    }
   }
 
   const vw = dom.video.videoWidth;
   const vh = dom.video.videoHeight;
-  dom.canvas.width = vw;
-  dom.canvas.height = vh;
+  
+  // Calculate crop to match view (WYSIWYG)
+  // 1. Get viewport dimensions
+  const sw = dom.video.clientWidth || window.innerWidth;
+  const sh = dom.video.clientHeight || window.innerHeight;
+  
+  const videoRatio = vw / vh;
+  const screenRatio = sw / sh;
+  const zoom = state.zoomLevel || 1.0;
 
-  ctx.drawImage(dom.video, 0, 0, vw, vh);
+  // 2. Calculate the specific region of the video frame that is visible
+  let visibleW, visibleH; // The width/height of the video content visible at 1x zoom (object-fit: cover)
 
-  if (state.featureState.currentFilter !== 'normal' || state.featureState.exposureValue !== 0) {
-    const imageData = ctx.getImageData(0, 0, vw, vh);
-    applyFilterToImageData(imageData, state.featureState.currentFilter);
+  if (screenRatio >= videoRatio) {
+    // Screen is wider relative to video. Video fits width-wise, cropped height-wise.
+    visibleW = vw;
+    visibleH = vw / screenRatio;
+  } else {
+    // Screen is taller relative to video. Video fits height-wise, cropped width-wise.
+    visibleH = vh;
+    visibleW = vh * screenRatio;
+  }
+
+  // 3. Apply Digital Zoom (center crop of the visible area)
+  // The user sees a window of size (visibleW/zoom) x (visibleH/zoom)
+  const cropW = visibleW / zoom;
+  const cropH = visibleH / zoom;
+  
+  // 4. Center coordinates
+  const sx = (vw - cropW) / 2;
+  const sy = (vh - cropH) / 2;
+
+  // 5. Destination Canvas
+  // We want the output to be high resolution (based on video source), 
+  // but with the aspect ratio of the screen.
+  // Scale up by 1.5x for sharper output
+  const outputScale = 1.5;
+  const outputW = Math.round(visibleW * outputScale);
+  const outputH = Math.round(visibleH * outputScale);
+  dom.canvas.width = outputW;
+  dom.canvas.height = outputH;
+
+  // 6. Draw filtered/cropped image
+  // Enable high quality image smoothing for digital zoom
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  // Apply filters using Context 2D Filter API (Hardware Accelerated)
+  // This matches the preview CSS and adds a subtle "Pro" enhancement to base photos
+  const brightnessVal = 1 + state.featureState.exposureValue * 0.18;
+  const filterCss = cssForFilter(state.featureState.currentFilter);
+  const filterParts = [];
+  
+  if (filterCss) {
+    filterParts.push(filterCss);
+  } else {
+     // Apply "Smart Enhance" for Normal mode: slight pop in contrast and saturation
+     filterParts.push('contrast(1.02) saturate(1.05)');
+  }
+
+  // Apply exposure
+  if (brightnessVal !== 1) {
+    filterParts.push(`brightness(${brightnessVal})`);
+  }
+  
+  // Set the filter on the context before drawing
+  if (filterParts.length > 0) {
+    ctx.filter = filterParts.join(' ');
+  }
+
+  // Draw the zoomed crop onto the full canvas size (digital zoom upscale)
+  ctx.drawImage(dom.video, sx, sy, cropW, cropH, 0, 0, outputW, outputH);
+  
+  // Reset filter and apply subtle sharpening for crisp output
+  ctx.filter = 'none';
+  
+  // Apply white balance if adjusted
+  if (state.whiteBalanceTemp && state.whiteBalanceTemp !== 5500) {
+    try {
+      const { applyWhiteBalanceToCanvas } = await import('../features/whitebalance.js');
+      applyWhiteBalanceToCanvas(dom.canvas, ctx, state.whiteBalanceTemp);
+    } catch (err) {
+      console.warn('White balance adjustment failed:', err);
+    }
+  }
+  
+  // Apply unsharp mask for better detail (only if not vivid filter, which already sharpens)
+  if (state.featureState.currentFilter !== 'vivid') {
+    const imageData = ctx.getImageData(0, 0, outputW, outputH);
+    sharpenImageData(imageData, 0.15); // Subtle sharpening
     ctx.putImageData(imageData, 0, 0);
   }
 
@@ -438,10 +627,12 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
 
   const logoOk = await ensureLogoLoaded(800);
   if (state.settings.watermark || logoOk) {
-    addWatermarkToCanvas(ctx, vw, vh);
+    addWatermarkToCanvas(ctx, visibleW, visibleH);
   }
 
-  const blob = await canvasToJpegBlob(dom.canvas, state.settings.imageQuality);
+  // Ensure high-quality JPEG output (minimum 0.92)
+  const jpegQuality = Math.max(0.92, state.settings.imageQuality || 0.95);
+  const blob = await canvasToJpegBlob(dom.canvas, jpegQuality);
 
   const photo = {
     id: Date.now(),
