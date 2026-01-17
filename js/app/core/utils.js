@@ -36,14 +36,42 @@ export function downloadBlob(blob, filename, { showStatus } = {}) {
   URL.revokeObjectURL(url);
 }
 
-export async function shareBlob(blob, filename, { t } = {}) {
+export function createGoogleMapsLink(lat, lon, locationName = '') {
+  if (!lat || !lon || !Number.isFinite(lat) || !Number.isFinite(lon)) return '';
+  
+  const mapsUrl = `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`;
+  const label = locationName ? `\n📍 ${locationName}` : '';
+  
+  return `${label}\n🗺️ View on Maps: ${mapsUrl}`;
+}
+
+export async function shareBlob(blob, filename, { t, photoMeta } = {}) {
   if (!navigator.share) return false;
 
   const file = new File([blob], filename, { type: blob.type || 'image/jpeg' });
+  
+  // Build share text with location if available
+  let shareText = t ? t('shareText') : 'Survey Photo';
+  
+  if (photoMeta && photoMeta.lat && photoMeta.lon) {
+    const locationText = createGoogleMapsLink(
+      photoMeta.lat, 
+      photoMeta.lon, 
+      photoMeta.location || photoMeta.customLocation
+    );
+    if (locationText) {
+      shareText = shareText + locationText;
+    }
+  }
+  
   if (navigator.canShare && !navigator.canShare({ files: [file] })) return false;
 
   try {
-    await navigator.share({ files: [file], title: t ? t('shareTitle') : 'Survey Photo', text: t ? t('shareText') : '' });
+    await navigator.share({ 
+      files: [file], 
+      title: t ? t('shareTitle') : 'Survey Photo', 
+      text: shareText 
+    });
     return true;
   } catch (e) {
     if (e?.name !== 'AbortError') console.warn('shareBlob failed', e);

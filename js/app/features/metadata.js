@@ -15,6 +15,9 @@ export function initMetadataExport(dom) {
     }
     
     exportBtn.addEventListener('click', async () => {
+        // Import state to access photos
+        const { state } = await import('../state.js');
+        
         // Show format selection
         const format = await showFormatDialog();
         if (!format) return;
@@ -26,9 +29,8 @@ export function initMetadataExport(dom) {
         if (selectedItems.length > 0) {
             photoIds = selectedItems.map(item => parseInt(item.dataset.photoId));
         } else {
-            // Export all photos
-            const allPhotos = await loadPhotos();
-            photoIds = allPhotos.map(p => p.id);
+            // Export all photos from state
+            photoIds = state.photos.map(p => p.id);
         }
         
         if (photoIds.length === 0) {

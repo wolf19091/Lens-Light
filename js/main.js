@@ -317,6 +317,10 @@ dom.selectAllBtn?.addEventListener('click', () => {
     const cb = item.querySelector('.gallery-item-checkbox');
     if (cb) cb.checked = checked;
   });
+  
+  // Update UI state
+  updateSelectAllButton(dom);
+  updateComparisonButton();
 });
 
 dom.shareSelectedBtn?.addEventListener('click', () => {
@@ -350,7 +354,7 @@ dom.viewerShareBtn?.addEventListener('click', async () => {
   };
 
   const { shareBlob, downloadBlob } = await import('./app/core/utils.js');
-  const shared = await shareBlob(record.blob, getPhotoFilename(meta), { t });
+  const shared = await shareBlob(record.blob, getPhotoFilename(meta), { t, photoMeta: meta });
   if (shared) showStatus('✓ Shared', 2000);
   else {
     downloadBlob(record.blob, getPhotoFilename(meta), { showStatus });

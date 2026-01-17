@@ -1,5 +1,8 @@
 # Lens Light - Professional Survey Camera App
 
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/wolf19091/Lens-Light)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 A progressive web app (PWA) for professional survey work with integrated GPS, compass, weather, and comprehensive sensor data capture.
 
 ## ✨ Features
@@ -147,9 +150,125 @@ Lens-Light/
 │           ├── status.js     # Status notifications
 │           └── utils.js      # Helper functions
 ├── sec-lens-logo.png      # App icon
-├── README.md              # This file
-├── ENHANCEMENTS.md        # Future improvements
-└── .gitignore             # Git ignore rules
+└── README.md              # This file
+```
+
+## 🚀 Quick Start (2 Minutes)
+
+### Test New Features
+
+**1. Tap-to-Focus (10 sec)**
+- Tap the 🎯 button → Touch screen → Watch focus ring appear
+
+**2. White Balance (15 sec)**
+- Tap 🌡️ button → Drag slider → See color temperature change
+
+**3. HDR Photo (30 sec)**
+- Tap ✨ button → Take photo → Wait for 3-exposure merge
+
+**4. QR Scanner (20 sec)**
+- Tap ⊡ button → Point at QR code → Auto-detects
+
+- **Dependencies**:
+  - jsQR v1.4.0 (QR code scanning)
+
+## 📊 Metadata Export
+
+Export photo data as CSV (Excel) or JSON:
+
+**Exported Fields:**
+- Photo ID, filename, timestamp
+- GPS: latitude, longitude, altitude, accuracy, heading
+- Location: name, project, custom tags
+- Sensors: compass heading, device orientation
+- Weather: temperature, conditions, wind
+- Comments & QR codes
+
+**Usage:**
+1. Gallery → Select photos
+2. Tap "📊 Export Metadata"
+3. Choose CSV or JSON format
+4. File downloads automatically
+
+## 📱 Mobile Gestures
+
+- **Single tap** - Focus (when 🎯 enabled)
+- **Double tap** - Flip camera
+- **Pinch** - Zoom (in comparison mode)
+- **Long press** - Select photo
+
+## 🎯 Feature Buttons
+
+| Button | Feature | Description |
+|--------|---------|-------------|
+| 🎯 | Tap-to-Focus | Touch screen to focus on specific areas |
+| 🌡️ | White Balance | Adjust color temperature (2000K-8000K) |
+| ✨ | HDR Mode | High Dynamic Range with 3-exposure bracketing |
+| ⊡ | QR Scanner | Scan QR codes for equipment/location tags |
+| 🔍 | Compare | Side-by-side photo comparison |
+| 📊 | Export | Export metadata as CSV/JSON |
+
+## 📝 Version History
+
+### v2.0.0 (January 2026)
+- ✨ Added Tap-to-Focus with visual feedback
+- 🌡️ Added White Balance control (2000K-8000K)
+- ⚡ Added HDR mode with exposure bracketing
+- 📱 Added QR code scanner
+- 🔍 Added photo comparison viewer
+- 📊 Added metadata export (CSV/JSON)
+- 🎨 Enhanced UI with new feature buttons
+- 🔧 Bug fixes for export and select-all functions
+
+### v1.0.0 (December 2025)
+- Initial release with core camera features
+- GPS and sensor integration
+- Gallery with IndexedDB storage
+- PWA support and offline functionality
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+This project is licensed under the MIT License.
+
+## 🙏 Acknowledgments
+
+- **jsQR** - QR code decoding
+- **OpenStreetMap** - Reverse geocoding
+- **Open-Meteo** - Weather data API
+
+---
+
+**Version 2.0.0** • Built with ❤️ for professional survey work • 2026
+**5. Photo Comparison (30 sec)**
+- Take 2 photos → Gallery → Select → Compare (2)
+
+**6. Export Metadata (20 sec)**
+- Gallery → Select photos → 📊 Export → Choose CSV/JSON
+
+### Pro Tips
+
+**Best Quality Setup:**
+```
+Settings → Image Quality → High (100%)
+Settings → HDR Mode → ON
+Tap 🎯 Focus button
+```
+
+**Survey Mode:**
+```
+Settings → Project Name → "Site Survey 2026"
+Settings → Timestamp Format → ISO 8601
+Enable: ✨ HDR + 🎯 Focus
+```
+
+**Indoor Photography:**
+```
+🌡️ White Balance → Warmer (left)
+✨ HDR → ON
 ```
 
 ## 🔧 Tech Stack

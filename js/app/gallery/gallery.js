@@ -291,12 +291,20 @@ export async function deletePhoto(id, dom, { showStatus } = {}, galleryObserver)
 
 export async function shareSelectedPhotos(dom, { showStatus } = {}) {
   const files = [];
+  const locations = [];
+  
   for (const id of state.selectedPhotos) {
     const record = await dbGetPhoto(id);
     if (!record?.blob) continue;
     const meta = state.photos.find((p) => p.id === id) || { id, timestamp: new Date().toISOString() };
     const filename = getPhotoFilename(meta);
     files.push(new File([record.blob], filename, { type: record.blob.type || 'image/jpeg' }));
+    
+    // Collect location data
+    if (meta.lat && meta.lon) {
+      const { createGoogleMapsLink } = await import('../core/utils.js');
+      locations.push(createGoogleMapsLink(meta.lat, meta.lon, meta.location));
+    }
   }
 
   if (files.length === 0) {
@@ -315,7 +323,13 @@ export async function shareSelectedPhotos(dom, { showStatus } = {}) {
   }
 
   try {
-    await navigator.share({ files, title: `${files.length} photo(s)`, text: t('shareText') });
+    // Include locations in share text
+    let shareText = t('shareText');
+    if (locations.length > 0) {
+      shareText = shareText + '\n\n' + locations.join('\n\n');
+    }
+    
+    await navigator.share({ files, title: `${files.length} photo(s)`, text: shareText });
     showStatus?.('✓ Shared', 2000);
     exitSelectMode(dom);
   } catch (e) {
@@ -380,7 +394,7 @@ export async function shareLastCapturedPhoto({ showStatus } = {}) {
     };
     const filename = getPhotoFilename(meta);
 
-    const shared = await shareBlob(record.blob, filename, { t });
+    const shared = await shareBlob(record.blob, filename, { t, photoMeta: meta });
     if (shared) showStatus?.('✓ Shared', 2000);
     else {
       downloadBlob(record.blob, filename, { showStatus });
