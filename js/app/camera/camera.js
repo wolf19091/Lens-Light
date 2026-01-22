@@ -617,12 +617,31 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
   // 5. Destination Canvas
   // We want the output to be high resolution (based on video source), 
   // but with the aspect ratio of the screen.
-  // Scale up by 1.5x for sharper output
-  const outputScale = 1.5;
+  // Use 2x scale for optimal quality without being too large
+  const outputScale = Math.min(2.0, Math.max(1.5, vw / visibleW));
   const outputW = Math.round(visibleW * outputScale);
   const outputH = Math.round(visibleH * outputScale);
-  dom.canvas.width = outputW;
-  dom.canvas.height = outputH;
+  
+  // Ensure minimum quality (at least 1080p equivalent for one dimension)
+  const minDimension = 1080;
+  const currentMin = Math.min(outputW, outputH);
+  if (currentMin < minDimension && currentMin > 0) {
+    const scaleFactor = minDimension / currentMin;
+    dom.canvas.width = Math.round(outputW * scaleFactor);
+    dom.canvas.height = Math.round(outputH * scaleFactor);
+  } else {
+    dom.canvas.width = outputW;
+    dom.canvas.height = outputH;
+  }
+  
+  if (localStorage.getItem('debug_mode') === 'true') {
+    console.log('📐 Output canvas:', {
+      canvasWidth: dom.canvas.width,
+      canvasHeight: dom.canvas.height,
+      outputScale: outputScale.toFixed(2),
+      qualityEnhanced: currentMin < minDimension
+    });
+  }
 
   // 6. Draw filtered/cropped image
   // Enable high quality image smoothing for digital zoom
@@ -653,7 +672,7 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
   }
 
   // Draw the zoomed crop onto the full canvas size (digital zoom upscale)
-  ctx.drawImage(dom.video, sx, sy, cropW, cropH, 0, 0, outputW, outputH);
+  ctx.drawImage(dom.video, sx, sy, cropW, cropH, 0, 0, dom.canvas.width, dom.canvas.height);
   
   // Reset filter and apply subtle sharpening for crisp output
   ctx.filter = 'none';
@@ -670,7 +689,7 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
   
   // Apply unsharp mask for better detail (only if not vivid filter, which already sharpens)
   if (state.featureState.currentFilter !== 'vivid') {
-    const imageData = ctx.getImageData(0, 0, outputW, outputH);
+    const imageData = ctx.getImageData(0, 0, dom.canvas.width, dom.canvas.height);
     sharpenImageData(imageData, 0.15); // Subtle sharpening
     ctx.putImageData(imageData, 0, 0);
   }
@@ -680,7 +699,7 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
 
   const logoOk = await ensureLogoLoaded(800);
   if (state.settings.watermark || logoOk) {
-    addWatermarkToCanvas(ctx, visibleW, visibleH);
+    addWatermarkToCanvas(ctx, dom.canvas.width, dom.canvas.height);
   }
 
   // Ensure high-quality JPEG output (minimum 0.92)

@@ -1,10 +1,15 @@
-const CACHE_NAME = 'survey-cam-v7';
+// Import version for cache naming
+import { CACHE_NAME, APP_VERSION } from './js/version.js';
+
+console.log(`🔧 Service Worker v${APP_VERSION} initializing...`);
+
 // Keep this list limited to files that actually exist in the deployed folder.
 // NOTE: index.html is intentionally EXCLUDED - it's served network-first without caching
 const ASSETS = [
   './manifest.json',
   './sec-lens-logo.png',
   './css/style.css',
+  './js/version.js',
   './js/main.js',
   './js/script.js',
   './js/app/state.js',
@@ -39,19 +44,33 @@ self.addEventListener('install', (event) => {
 
 // Activate: Clean up old caches and take control of clients
 self.addEventListener('activate', (event) => {
+  console.log(`🔧 Service Worker v${APP_VERSION} activating...`);
+  
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cache) => {
-          if (cache !== CACHE_NAME) {
-            console.log('Deleting old cache:', cache);
-            return caches.delete(cache);
-          }
-        })
-      );
-    }).then(() => {
-      // Tell the service worker to take control of all open pages immediately
-      return self.clients.claim();
+    Promise.all([
+      // Clean up old caches
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cache) => {
+            if (cache !== CACHE_NAME) {
+              console.log('🗑️ Deleting old cache:', cache);
+              return caches.delete(cache);
+            }
+          })
+        );
+      }),
+      // Take control of all pages immediately
+      self.clients.claim()
+    ]).then(() => {
+      console.log(`✅ Service Worker v${APP_VERSION} activated`);
+      
+      // Force reload all controlled clients to use new version
+      return self.clients.matchAll({ type: 'window' }).then(clients => {
+        clients.forEach(client => {
+          console.log('🔄 Reloading client:', client.url);
+          client.postMessage({ type: 'SW_UPDATED', version: APP_VERSION });
+        });
+      });
     })
   );
 });

@@ -6,15 +6,33 @@ export function registerServiceWorker() {
     navigator.serviceWorker
       .register('./sw.js')
       .then((reg) => {
-        // update hourly
-        setInterval(() => reg.update(), 60 * 60 * 1000);
+        console.log('✅ Service Worker registered');
+        // Check for updates every hour
+        setInterval(() => {
+          console.log('🔄 Checking for Service Worker updates...');
+          reg.update();
+        }, 60 * 60 * 1000);
       })
       .catch((err) => console.warn('SW registration failed (not critical):', err?.message || err));
 
+    // Listen for SW update messages
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'SW_UPDATED') {
+        console.log('🔄 New version available:', event.data.version);
+        console.log('🔄 Reloading to activate new version...');
+        // Small delay to ensure SW is fully activated
+        setTimeout(() => {
+          window.location.reload();
+        }, 100);
+      }
+    });
+
+    // Fallback: detect controller change (when SW updates)
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshing) return;
       refreshing = true;
+      console.log('🔄 Controller changed, reloading...');
       window.location.reload();
     });
   });

@@ -7,6 +7,7 @@ import { applyFeatureUI } from './app/ui/features.js';
 import { updateAppVh } from './app/ui/viewport.js';
 import { requestWakeLock, releaseWakeLock } from './app/ui/wakelock.js';
 import { registerServiceWorker } from './app/pwa/pwa.js';
+import { APP_VERSION } from './version.js';
 import {
   loadPhotos,
   updateGalleryUI,
@@ -46,6 +47,9 @@ import { initQRScanner } from './app/features/qrscanner.js';
 import { initPhotoComparison, updateComparisonButton } from './app/features/comparison.js';
 import { initMetadataExport } from './app/features/metadata.js';
 import { initHDRToggle } from './app/features/hdr.js';
+
+// Log version at startup
+console.log(`📱 Lens Light v${APP_VERSION}`);
 
 // Prevent multiple initialization
 if (window.__LENS_LIGHT_INITIALIZED__) {
@@ -586,6 +590,12 @@ window.addEventListener('orientationchange', updateAppVh);
 updateAppVh();
 loadSettings(dom);
 applyFeatureUI(dom);
+
+// Display version in UI
+const versionEl = document.getElementById('app-version');
+if (versionEl) {
+  versionEl.textContent = `v${APP_VERSION}`;
+}
 
 // Initialize new features
 console.log('🎯 Initializing advanced features...');
