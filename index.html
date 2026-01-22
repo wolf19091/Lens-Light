@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000">
     <meta name="description" content="Professional camera app for survey and field work with GPS, compass, and sensor integration">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data: https:; connect-src 'self' https://nominatim.openstreetmap.org https://api.open-meteo.com; worker-src 'self'; manifest-src 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data: https:; connect-src 'self' https://nominatim.openstreetmap.org https://geocode.maps.co https://api.open-meteo.com; worker-src 'self'; manifest-src 'self'">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" href="sec-lens-logo.png">
     <link rel="apple-touch-icon" href="sec-lens-logo.png">
@@ -289,6 +289,16 @@
             </label>
         </div>
         
+        <div class="setting-item">
+            <label style="display: flex; justify-content: space-between; align-items: center;">
+                <span id="label-debug-mode">🐛 Debug Logging (Console)</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-debug-mode" aria-label="Debug logging">
+                    <span class="slider"></span>
+                </label>
+            </label>
+        </div>
+        
         <div class="setting-item" style="border-bottom: none;">
             <button class="clear-data-btn" id="clear-all-data-btn" type="button">
                 <span id="label-clear-data">🗑️ Clear All Data</span>
@@ -373,7 +383,8 @@
     <canvas id="hidden-canvas" style="display:none;" aria-hidden="true"></canvas>
 
     <!-- QR Code Scanner Library -->
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <!-- Using unpkg.com instead of jsdelivr to avoid tracking prevention blocks -->
+    <script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js" defer></script>
 
     <script type="module" src="js/main.js" defer></script>
 </body>

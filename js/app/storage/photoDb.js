@@ -43,17 +43,50 @@ export function openPhotoDb() {
 
 export async function dbPutPhoto(record) {
   const db = await openPhotoDb();
+  
+  // Debug logging
+  if (localStorage.getItem('debug_mode') === 'true') {
+    console.log('💾 IndexedDB PUT:', {
+      id: record.id,
+      blobSize: record.blob?.size,
+      timestamp: record.timestamp
+    });
+  }
+  
   return new Promise((resolve, reject) => {
     const tx = db.transaction(PHOTO_STORE, 'readwrite');
-    tx.oncomplete = () => resolve();
+    
+    tx.oncomplete = () => {
+      if (localStorage.getItem('debug_mode') === 'true') {
+        console.log('✅ IndexedDB PUT complete:', record.id);
+      }
+      resolve();
+    };
+    
     tx.onerror = () => {
-      console.error('IndexedDB put error:', tx.error);
-      reject(tx.error || new Error('IndexedDB put failed'));
+      const error = tx.error || new Error('IndexedDB put failed');
+      console.error('❌ IndexedDB PUT error:', error, {
+        name: error.name,
+        message: error.message,
+        code: error.code
+      });
+      
+      // User-friendly error messages
+      if (error.name === 'QuotaExceededError') {
+        reject(new Error('Storage full! Please delete old photos.'));
+      } else if (error.name === 'ConstraintError') {
+        reject(new Error('Photo ID already exists. Please try again.'));
+      } else {
+        reject(error);
+      }
     };
+    
     tx.onabort = () => {
-      console.error('IndexedDB transaction aborted:', tx.error);
-      reject(tx.error || new Error('IndexedDB transaction aborted'));
+      const error = tx.error || new Error('IndexedDB transaction aborted');
+      console.error('❌ IndexedDB transaction aborted:', error);
+      reject(error);
     };
+    
     const req = tx.objectStore(PHOTO_STORE).put(record);
     req.onerror = () => {
       try {
@@ -65,9 +98,19 @@ export async function dbPutPhoto(record) {
 
 export async function dbDeletePhoto(id) {
   const db = await openPhotoDb();
+  
+  if (localStorage.getItem('debug_mode') === 'true') {
+    console.log('🗑️ IndexedDB DELETE:', id);
+  }
+  
   return new Promise((resolve, reject) => {
     const tx = db.transaction(PHOTO_STORE, 'readwrite');
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      if (localStorage.getItem('debug_mode') === 'true') {
+        console.log('✅ IndexedDB DELETE complete:', id);
+      }
+      resolve();
+    };
     tx.onerror = () => {
       console.error('IndexedDB delete error:', tx.error);
       reject(tx.error || new Error('IndexedDB delete failed'));

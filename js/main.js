@@ -22,7 +22,8 @@ import {
   shareSelectedPhotos,
   shareLastCapturedPhoto,
   getPhotoFilename,
-  updatePhotoComment
+  updatePhotoComment,
+  updateSelectAllButton
 } from './app/gallery/gallery.js';
 import { clearAllPhotos, dbGetPhoto } from './app/storage/photoDb.js';
 import {

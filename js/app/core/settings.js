@@ -34,10 +34,12 @@ export function loadSettings(dom) {
   // NEW SETTINGS
   const toggleHdr = document.getElementById('toggle-hdr');
   const toggleFocusAssist = document.getElementById('toggle-focus-assist');
+  const toggleDebugMode = document.getElementById('toggle-debug-mode');
   const timestampFormat = document.getElementById('timestamp-format');
   
   if (toggleHdr) toggleHdr.checked = Boolean(state.settings.hdrMode);
   if (toggleFocusAssist) toggleFocusAssist.checked = state.settings.focusAssist !== false;
+  if (toggleDebugMode) toggleDebugMode.checked = localStorage.getItem('debug_mode') === 'true';
   if (timestampFormat) timestampFormat.value = state.settings.timestampFormat || 'iso';
 
   setLanguage(state.settings.language || 'en', dom);
@@ -130,6 +132,7 @@ export function bindSettingsUi(dom, { showStatus, updateWeatherDisplay, renderGa
   // NEW SETTINGS EVENT LISTENERS
   const toggleHdr = document.getElementById('toggle-hdr');
   const toggleFocusAssist = document.getElementById('toggle-focus-assist');
+  const toggleDebugMode = document.getElementById('toggle-debug-mode');
   const timestampFormat = document.getElementById('timestamp-format');
   
   toggleHdr?.addEventListener('change', (e) => {
@@ -141,6 +144,18 @@ export function bindSettingsUi(dom, { showStatus, updateWeatherDisplay, renderGa
   toggleFocusAssist?.addEventListener('change', (e) => {
     state.settings.focusAssist = e.target.checked;
     saveSettings();
+  });
+  
+  toggleDebugMode?.addEventListener('change', (e) => {
+    if (e.target.checked) {
+      localStorage.setItem('debug_mode', 'true');
+      console.log('🐛 Debug mode enabled');
+      showStatus?.('🐛 Debug mode ON - check console', 2000);
+    } else {
+      localStorage.removeItem('debug_mode');
+      console.log('Debug mode disabled');
+      showStatus?.('Debug mode OFF', 1500);
+    }
   });
   
   timestampFormat?.addEventListener('change', (e) => {

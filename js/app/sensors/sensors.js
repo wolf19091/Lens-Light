@@ -154,6 +154,18 @@ function updateGPS(position, dom, { maybeUpdateCustomLocationFromWeb } = {}) {
   state.currentLon = position.coords.longitude;
   state.currentAlt = position.coords.altitude || 0;
   state.currentAccuracy = position.coords.accuracy || 0;
+  
+  if (localStorage.getItem('debug_mode') === 'true') {
+    console.log('📍 GPS update:', {
+      lat: state.currentLat.toFixed(6),
+      lon: state.currentLon.toFixed(6),
+      accuracy: Math.round(state.currentAccuracy) + 'm',
+      altitude: Math.round(state.currentAlt) + 'm',
+      heading: position.coords.heading ?? 'N/A',
+      speed: position.coords.speed ?? 'N/A',
+      timestamp: new Date(position.timestamp).toISOString()
+    });
+  }
 
   if (dom?.gpsCoordsEl) dom.gpsCoordsEl.textContent = `${state.currentLat.toFixed(6)}, ${state.currentLon.toFixed(6)}`;
   if (dom?.altitudeEl) dom.altitudeEl.textContent = `Alt: ${formatAltitudeLocal(state.currentAlt)}`;
@@ -208,20 +220,42 @@ export async function reverseGeocodeFromWeb(lat, lon) {
   if (cached && Date.now() - cached.timestamp < state.CACHE_EXPIRY) return cached.label;
 
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=12&addressdetails=1&accept-language=${encodeURIComponent(state.currentLang)}`;
+    // Use geocode.maps.co free API (no auth required) instead of Nominatim
+    // Nominatim often blocks requests from localhost/browsers
+    const url = `https://geocode.maps.co/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&format=json`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     const res = await fetch(url, {
       method: 'GET',
-      headers: { Accept: 'application/json', 'User-Agent': 'LensLightApp/1.0' },
+      headers: { Accept: 'application/json' },
       signal: controller.signal
     });
 
     clearTimeout(timeoutId);
-    if (!res.ok) throw new Error(`Reverse geocode failed: ${res.status}`);
+    
+    // Handle rate limiting (429) and CORS errors gracefully
+    if (!res.ok) {
+      if (res.status === 429) {
+        if (localStorage.getItem('debug_mode') === 'true') {
+          console.warn('⚠️ Geocoding rate limited, using cache');
+        }
+        return '';
+      }
+      throw new Error(`Reverse geocode failed: ${res.status}`);
+    }
 
     const data = await res.json();
+    
+    if (localStorage.getItem('debug_mode') === 'true') {
+      console.log('🗺️ Geocoding result:', {
+        lat: lat.toFixed(6),
+        lon: lon.toFixed(6),
+        address: data?.address,
+        display_name: data?.display_name
+      });
+    }
+    
     const addr = data?.address;
     const parts = [];
     const city = addr?.city || addr?.town || addr?.village || addr?.suburb;

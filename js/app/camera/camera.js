@@ -101,6 +101,14 @@ export async function initCamera(dom, { showStatus } = {}) {
   const requestId = ++state.initCameraRequestId;
 
   if (dom?.shutterBtn) dom.shutterBtn.classList.add('disabled');
+  
+  if (localStorage.getItem('debug_mode') === 'true') {
+    console.log('📷 initCamera START:', {
+      requestId,
+      facingMode: state.settings.cameraFacingMode,
+      hasExistingStream: Boolean(state.videoStream)
+    });
+  }
 
   try {
     if (state.videoStream) {
@@ -123,16 +131,21 @@ export async function initCamera(dom, { showStatus } = {}) {
 
     let stream;
     let lastError;
+    let constraintUsed = 'none';
+    
     try {
       stream = await navigator.mediaDevices.getUserMedia(constraintsExact);
+      constraintUsed = 'exact';
     } catch (e1) {
       lastError = e1;
       try {
         stream = await navigator.mediaDevices.getUserMedia(constraintsIdeal);
+        constraintUsed = 'ideal';
       } catch (e2) {
         lastError = e2;
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          constraintUsed = 'fallback';
         } catch (e3) {
           lastError = e3;
           throw lastError;
@@ -152,6 +165,24 @@ export async function initCamera(dom, { showStatus } = {}) {
     localStorage.setItem('camera_granted', 'true');
 
     const ready = await ensureVideoReady(dom?.video);
+    
+    if (localStorage.getItem('debug_mode') === 'true') {
+      const track = stream?.getVideoTracks?.()?.[0];
+      const settings = track?.getSettings?.() || {};
+      console.log('📷 Camera initialized:', {
+        constraintUsed,
+        ready,
+        videoWidth: dom?.video?.videoWidth,
+        videoHeight: dom?.video?.videoHeight,
+        trackSettings: {
+          width: settings.width,
+          height: settings.height,
+          facingMode: settings.facingMode,
+          aspectRatio: settings.aspectRatio
+        }
+      });
+    }
+    
     if (dom?.shutterBtn) dom.shutterBtn.classList.toggle('disabled', !ready);
     showStatus?.(ready ? t('cameraReady') : '⚠️ ' + t('videoNotReady'), ready ? 2000 : 3000);
 
@@ -482,15 +513,24 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
   if (!dom?.video || !state.videoStream) {
     throw new Error(t('videoNotReady'));
   }
+  
+  // CRITICAL FIX: Ensure video dimensions are available before capture
+  // iOS Safari sometimes reports 0x0 even when video is playing
   if (!dom.video.videoWidth || !dom.video.videoHeight) {
-    const ready = await ensureVideoReady(dom.video);
-    if (!ready) throw new Error(t('videoNotReady'));
+    console.warn('⚠️ Video dimensions not ready, waiting...');
+    const ready = await ensureVideoReady(dom.video, 3000);
+    if (!ready || !dom.video.videoWidth || !dom.video.videoHeight) {
+      throw new Error('Video dimensions unavailable. Try flipping camera or restart app.');
+    }
   }
+  
   if (!dom?.canvas) {
     throw new Error('Canvas missing');
   }
-
-  const ctx = dom.canvas.getContext('2d', { alpha: false });
+
+  // PERFORMANCE FIX: Add willReadFrequently for faster getImageData operations
+  // Used in sharpening, white balance, and HDR processing
+  const ctx = dom.canvas.getContext('2d', { alpha: false, willReadFrequently: true });
 
   // Check if HDR mode is enabled
   if (state.featureState.hdrMode) {
@@ -530,8 +570,21 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
   const vw = dom.video.videoWidth;
   const vh = dom.video.videoHeight;
   
+  // Debug logging (if enabled)
+  if (localStorage.getItem('debug_mode') === 'true') {
+    console.log('📸 Capture dimensions:', {
+      videoWidth: vw,
+      videoHeight: vh,
+      videoRatio: (vw/vh).toFixed(2),
+      clientWidth: dom.video.clientWidth,
+      clientHeight: dom.video.clientHeight,
+      screenRatio: ((dom.video.clientWidth || window.innerWidth) / (dom.video.clientHeight || window.innerHeight)).toFixed(2),
+      zoomLevel: state.zoomLevel
+    });
+  }
+  
   // Calculate crop to match view (WYSIWYG)
-  // 1. Get viewport dimensions
+  // 1. Get viewport dimensions - use actual rendered size
   const sw = dom.video.clientWidth || window.innerWidth;
   const sh = dom.video.clientHeight || window.innerHeight;
   
@@ -648,13 +701,25 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
     filter: state.featureState.currentFilter
   };
 
-  await dbPutPhoto({ ...photo, blob });
-  state.photos.push(photo);
-  state.lastCapturedPhotoId = photo.id;
-
-  onCaptured?.(photo);
-
-  if (!state.featureState.burstMode) showStatus?.(t('photoCaptured'), 1500);
+  // CRITICAL FIX: Catch and handle IndexedDB errors with user-friendly messages
+  try {
+    await dbPutPhoto({ ...photo, blob });
+    state.photos.push(photo);
+    state.lastCapturedPhotoId = photo.id;
+    onCaptured?.(photo);
+    if (!state.featureState.burstMode) showStatus?.(t('photoCaptured'), 1500);
+  } catch (err) {
+    console.error('❌ Failed to save photo:', err);
+    
+    // User-friendly error based on error type
+    if (err.message?.includes('Storage full') || err.message?.includes('QuotaExceeded')) {
+      showStatus?.('❌ Storage full! Delete old photos to continue.', 5000);
+      throw new Error('Storage full - photo not saved');
+    } else {
+      showStatus?.('❌ Failed to save photo: ' + (err.message || 'Unknown error'), 4000);
+      throw err;
+    }
+  }
 }
 
 export async function performCapture(dom, { showStatus, onCaptured, onBurstUi } = {}) {
@@ -669,6 +734,17 @@ export async function performCapture(dom, { showStatus, onCaptured, onBurstUi } 
     console.error('❌ No video stream - camera not initialized');
     showStatus?.('❌ ' + t('videoNotReady'), 2500);
     return;
+  }
+  
+  // CRITICAL FIX: Check storage quota before capture to prevent photo loss
+  try {
+    const quota = await checkStorageQuota({ showStatus });
+    if (quota && quota.percentUsed > 95) {
+      showStatus?.('❌ Storage full! Please delete photos to continue.', 5000);
+      return;
+    }
+  } catch (e) {
+    console.warn('Quota check failed, proceeding anyway:', e);
   }
   
   console.log('Starting capture...');

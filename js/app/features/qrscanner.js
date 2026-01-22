@@ -19,6 +19,17 @@ export function initQRScanner(dom) {
         return;
     }
     
+    // Check if jsQR library loaded successfully
+    if (typeof window.jsQR === 'undefined') {
+        console.warn('⚠️ jsQR library not loaded - QR scanner disabled');
+        if (qrBtn) {
+            qrBtn.disabled = true;
+            qrBtn.title = 'QR Scanner unavailable (library blocked)';
+            qrBtn.style.opacity = '0.5';
+        }
+        return;
+    }
+    
     // Open scanner
     qrBtn.addEventListener('click', async () => {
         qrScanner.setAttribute('aria-hidden', 'false');
@@ -71,8 +82,8 @@ function startQRScan() {
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             
             // Detect QR code (using jsQR if available)
-            if (typeof jsQR !== 'undefined') {
-                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            if (typeof window.jsQR !== 'undefined') {
+                const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
                     inversionAttempts: "dontInvert",
                 });
                 
@@ -81,12 +92,13 @@ function startQRScan() {
                     return; // Stop scanning after successful detection
                 }
             } else {
-                // Fallback: simple pattern detection
-                const detected = detectQRPattern(imageData);
-                if (detected) {
-                    handleQRCodeDetected('QR Code detected (install jsQR for full decoding)');
-                    return;
+                console.warn('jsQR not available, QR scanning disabled');
+                // Don't spam console - just fail silently after first warning
+                if (!scan.warnedOnce) {
+                    scan.warnedOnce = true;
                 }
+                stopQRScan();
+                return;
             }
         }
         

@@ -1,8 +1,7 @@
-const CACHE_NAME = 'survey-cam-v6';
+const CACHE_NAME = 'survey-cam-v7';
 // Keep this list limited to files that actually exist in the deployed folder.
+// NOTE: index.html is intentionally EXCLUDED - it's served network-first without caching
 const ASSETS = [
-  './',
-  './index.html',
   './manifest.json',
   './sec-lens-logo.png',
   './css/style.css',
@@ -59,9 +58,51 @@ self.addEventListener('activate', (event) => {
 
 // Fetch: Network First, then Cache (Stale-While-Revalidate logic for offline support)
 self.addEventListener('fetch', (event) => {
-  // Skip cross-origin requests like Google Maps or Analytics if necessary, 
-  // but for this app we want to cache what we can.
   const url = new URL(event.request.url);
+  
+  // CRITICAL: Never cache index.html to prevent stale version lock-in
+  // Always serve fresh HTML so updates work properly
+  const isHtml = url.pathname === '/' || url.pathname === '/index.html' || url.pathname.endsWith('.html');
+  
+  if (isHtml) {
+    event.respondWith(
+      fetch(event.request)
+        .catch(() => {
+          // Offline fallback: serve a minimal HTML shell if we have it cached
+          // This ensures the app works offline but updates properly when online
+          return caches.match('./index.html').then(cached => {
+            return cached || new Response('<h1>Offline</h1><p>Please check your connection.</p>', {
+              headers: { 'Content-Type': 'text/html' }
+            });
+          });
+        })
+    );
+    return;
+  }
+  
+  // Cache CDN libraries (unpkg.com for jsQR) for offline use
+  const isCDN = url.origin.includes('unpkg.com') || url.origin.includes('cdn.jsdelivr.net');
+  
+  if (isCDN) {
+    event.respondWith(
+      caches.match(event.request).then(cached => {
+        if (cached) return cached;
+        return fetch(event.request).then(response => {
+          if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then(cache => {
+              cache.put(event.request, responseToCache);
+            });
+          }
+          return response;
+        });
+      }).catch(() => {
+        // Offline: return cached version if available
+        return caches.match(event.request);
+      })
+    );
+    return;
+  }
   
   event.respondWith(
     fetch(event.request)
