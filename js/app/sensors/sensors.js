@@ -220,9 +220,12 @@ export async function reverseGeocodeFromWeb(lat, lon) {
   if (cached && Date.now() - cached.timestamp < state.CACHE_EXPIRY) return cached.label;
 
   try {
-    // Use geocode.maps.co free API (no auth required) instead of Nominatim
-    // Nominatim often blocks requests from localhost/browsers
-    const url = `https://geocode.maps.co/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&format=json`;
+    // INFO: Switched from geocode.maps.co (401 issues) to BigDataCloud (Client-side friendly, no key)
+    // and Nominatim (OSM) as backup structure is different.
+    
+    // We try BigDataCloud first as it's designed for client-side use
+    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`;
+    
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -234,44 +237,50 @@ export async function reverseGeocodeFromWeb(lat, lon) {
 
     clearTimeout(timeoutId);
     
-    // Handle rate limiting (429) and CORS errors gracefully
+    // Handle errors
     if (!res.ok) {
       if (res.status === 429) {
-        if (localStorage.getItem('debug_mode') === 'true') {
-          console.warn('⚠️ Geocoding rate limited, using cache');
-        }
+        console.warn('⚠️ Geocoding rate limited');
         return '';
       }
-      throw new Error(`Reverse geocode failed: ${res.status}`);
+       // Fallback to empty if service fails
+       throw new Error(`Reverse geocode failed: ${res.status}`);
     }
 
     const data = await res.json();
     
     if (localStorage.getItem('debug_mode') === 'true') {
-      console.log('🗺️ Geocoding result:', {
-        lat: lat.toFixed(6),
-        lon: lon.toFixed(6),
-        address: data?.address,
-        display_name: data?.display_name
-      });
+      console.log('🗺️ Geocoding result (BDC):', data);
     }
     
-    const addr = data?.address;
+    // Map BigDataCloud response to our format
+    // BDC: { city: "Riyadh", principalSubdivision: "Riyadh Region", countryName: "Saudi Arabia", locality: "..." }
+    // Old (Nominatim): { address: { city: "...", state: "...", country: "..." } }
+    
     const parts = [];
-    const city = addr?.city || addr?.town || addr?.village || addr?.suburb;
-    const region = addr?.state || addr?.region || addr?.county;
-    const country = addr?.country;
+    
+    // Extract meaningful parts
+    const city = data.city || data.locality;
+    const region = data.principalSubdivision;
+    const country = data.countryName;
 
     if (city) parts.push(city);
-    if (region && region !== city) parts.push(region);
-    if (country && country !== region) parts.push(country);
+    // Only add region if it's different/meaningful
+    if (region && region !== city && !city.includes(region)) parts.push(region);
+    
+    // Only add country if strictly necessary or if we have very little else
+    if (country) {
+       // If we only have country, or to complete the address
+       if (parts.length < 2) parts.push(country);
+    }
 
-    const label = parts.filter(Boolean).join(', ') || data?.display_name || '';
+    const label = parts.filter(Boolean).join(', ') || '';
     state.geocodeCache.set(cacheKey, { label, timestamp: Date.now() });
     if (state.geocodeCache.size > 50) state.geocodeCache.delete(state.geocodeCache.keys().next().value);
 
     return label;
   } catch (e) {
+    // validation and cleanup
     if (e?.name !== 'AbortError') console.warn('reverseGeocodeFromWeb failed', e);
     return '';
   }

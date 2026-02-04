@@ -25,7 +25,13 @@ const ASSETS = [
   './js/app/pwa/pwa.js',
   './js/app/ui/viewport.js',
   './js/app/ui/features.js',
-  './js/app/ui/wakelock.js'
+  './js/app/ui/wakelock.js',
+  './js/app/features/comparison.js',
+  './js/app/features/focus.js',
+  './js/app/features/hdr.js',
+  './js/app/features/metadata.js',
+  './js/app/features/qrscanner.js',
+  './js/app/features/whitebalance.js'
 ];
 
 // Install: Cache core assets immediately

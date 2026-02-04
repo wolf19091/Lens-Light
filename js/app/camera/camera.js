@@ -416,7 +416,7 @@ function drawDataOverlay(ctx, canvas) {
   const lineHeight = fontSize * 1.6;
 
   const panelWidth = Math.min(canvas.width * 0.52, canvas.width - padding * 2);
-  const panelHeight = lineHeight * 7.2;
+  const panelHeight = lineHeight * 8.2; // Increased to fit weather info
   const x = canvas.width - panelWidth - padding * 0.8;
   const y = canvas.height - panelHeight - padding * 0.8;
 
@@ -455,6 +455,17 @@ function drawDataOverlay(ctx, canvas) {
   const now = new Date();
   let yy = y + padding * 0.9;
   const project = state.settings.projectName ? `Project: ${state.settings.projectName}` : '';
+  
+  // Build weather string if available
+  let weatherStr = '';
+  if (state.weatherData?.temp !== null && state.weatherData?.temp !== undefined) {
+    const tempUnit = state.settings.units === 'imperial' ? '°F' : '°C';
+    const temp = Math.round(state.weatherData.temp);
+    weatherStr = `Weather: ${temp}${tempUnit}`;
+    if (state.weatherData.description) {
+      weatherStr += ` ${state.weatherData.description}`;
+    }
+  }
 
   const lines = [
     project,
@@ -462,7 +473,8 @@ function drawDataOverlay(ctx, canvas) {
     state.currentLat && state.currentLon ? `GPS: ${state.currentLat.toFixed(6)}, ${state.currentLon.toFixed(6)}` : 'GPS: --',
     `Alt: ${formatAltitude(state.currentAlt)}`,
     `Heading: ${Math.round(state.currentHeading)}°`,
-    state.settings.customLocation ? `Loc: ${state.settings.customLocation}` : ''
+    state.settings.customLocation ? `Loc: ${state.settings.customLocation}` : '',
+    weatherStr
   ].filter(Boolean);
 
   for (const line of lines) {
@@ -527,7 +539,8 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
   if (!dom?.canvas) {
     throw new Error('Canvas missing');
   }
-
+
+
   // PERFORMANCE FIX: Add willReadFrequently for faster getImageData operations
   // Used in sharpening, white balance, and HDR processing
   const ctx = dom.canvas.getContext('2d', { alpha: false, willReadFrequently: true });
@@ -567,89 +580,79 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
     }
   }
 
+  // Use actual video stream dimensions (native resolution)
   const vw = dom.video.videoWidth;
   const vh = dom.video.videoHeight;
   
-  // Debug logging (if enabled)
-  if (localStorage.getItem('debug_mode') === 'true') {
-    console.log('📸 Capture dimensions:', {
-      videoWidth: vw,
-      videoHeight: vh,
-      videoRatio: (vw/vh).toFixed(2),
-      clientWidth: dom.video.clientWidth,
-      clientHeight: dom.video.clientHeight,
-      screenRatio: ((dom.video.clientWidth || window.innerWidth) / (dom.video.clientHeight || window.innerHeight)).toFixed(2),
-      zoomLevel: state.zoomLevel
-    });
-  }
-  
-  // Calculate crop to match view (WYSIWYG)
-  // 1. Get viewport dimensions - use actual rendered size
-  const sw = dom.video.clientWidth || window.innerWidth;
-  const sh = dom.video.clientHeight || window.innerHeight;
-  
+  // Get viewport aspect ratio (what user sees due to object-fit: cover)
+  const viewportWidth = dom.video.clientWidth || window.innerWidth;
+  const viewportHeight = dom.video.clientHeight || window.innerHeight;
+  const viewportRatio = viewportWidth / viewportHeight;
   const videoRatio = vw / vh;
-  const screenRatio = sw / sh;
   const zoom = state.zoomLevel || 1.0;
 
-  // 2. Calculate the specific region of the video frame that is visible
-  let visibleW, visibleH; // The width/height of the video content visible at 1x zoom (object-fit: cover)
-
-  if (screenRatio >= videoRatio) {
-    // Screen is wider relative to video. Video fits width-wise, cropped height-wise.
-    visibleW = vw;
-    visibleH = vw / screenRatio;
+  // Calculate which part of the video is visible (object-fit: cover logic)
+  // This determines the "visible frame" before zoom is applied
+  let visibleWidth, visibleHeight, offsetX, offsetY;
+  
+  if (videoRatio > viewportRatio) {
+    // Video is wider - height fills viewport, width is cropped
+    visibleHeight = vh;
+    visibleWidth = vh * viewportRatio;
+    offsetX = (vw - visibleWidth) / 2;
+    offsetY = 0;
   } else {
-    // Screen is taller relative to video. Video fits height-wise, cropped width-wise.
-    visibleH = vh;
-    visibleW = vh * screenRatio;
+    // Video is taller - width fills viewport, height is cropped
+    visibleWidth = vw;
+    visibleHeight = vw / viewportRatio;
+    offsetX = 0;
+    offsetY = (vh - visibleHeight) / 2;
   }
 
-  // 3. Apply Digital Zoom (center crop of the visible area)
-  // The user sees a window of size (visibleW/zoom) x (visibleH/zoom)
-  const cropW = visibleW / zoom;
-  const cropH = visibleH / zoom;
+  // Apply digital zoom (center-crop within the visible area)
+  const zoomedWidth = visibleWidth / zoom;
+  const zoomedHeight = visibleHeight / zoom;
   
-  // 4. Center coordinates
-  const sx = (vw - cropW) / 2;
-  const sy = (vh - cropH) / 2;
+  // Calculate source rectangle (center-crop)
+  const sx = offsetX + (visibleWidth - zoomedWidth) / 2;
+  const sy = offsetY + (visibleHeight - zoomedHeight) / 2;
 
-  // 5. Destination Canvas
-  // We want the output to be high resolution (based on video source), 
-  // but with the aspect ratio of the screen.
-  // Use 2x scale for optimal quality without being too large
-  const outputScale = Math.min(2.0, Math.max(1.5, vw / visibleW));
-  const outputW = Math.round(visibleW * outputScale);
-  const outputH = Math.round(visibleH * outputScale);
+  // Set output canvas to match the aspect ratio of viewport
+  // Use the actual video resolution as base, clamped to reasonable max
+  const maxDimension = 2400; // Max 2400px on long edge for quality/filesize balance
+  let outputWidth, outputHeight;
   
-  // Ensure minimum quality (at least 1080p equivalent for one dimension)
-  const minDimension = 1080;
-  const currentMin = Math.min(outputW, outputH);
-  if (currentMin < minDimension && currentMin > 0) {
-    const scaleFactor = minDimension / currentMin;
-    dom.canvas.width = Math.round(outputW * scaleFactor);
-    dom.canvas.height = Math.round(outputH * scaleFactor);
+  if (viewportRatio > 1) {
+    // Landscape
+    outputWidth = Math.min(maxDimension, zoomedWidth);
+    outputHeight = outputWidth / viewportRatio;
   } else {
-    dom.canvas.width = outputW;
-    dom.canvas.height = outputH;
+    // Portrait or square
+    outputHeight = Math.min(maxDimension, zoomedHeight);
+    outputWidth = outputHeight * viewportRatio;
   }
+  
+  dom.canvas.width = Math.round(outputWidth);
+  dom.canvas.height = Math.round(outputHeight);
   
   if (localStorage.getItem('debug_mode') === 'true') {
-    console.log('📐 Output canvas:', {
-      canvasWidth: dom.canvas.width,
-      canvasHeight: dom.canvas.height,
-      outputScale: outputScale.toFixed(2),
-      qualityEnhanced: currentMin < minDimension
+    console.log('📸 Capture:', {
+      video: `${vw}x${vh} (${videoRatio.toFixed(2)})`,
+      viewport: `${viewportWidth}x${viewportHeight} (${viewportRatio.toFixed(2)})`,
+      visible: `${visibleWidth.toFixed(0)}x${visibleHeight.toFixed(0)}`,
+      crop: `${zoomedWidth.toFixed(0)}x${zoomedHeight.toFixed(0)} at (${sx.toFixed(0)},${sy.toFixed(0)})`,
+      output: `${dom.canvas.width}x${dom.canvas.height}`,
+      zoom: `${zoom}x`
     });
   }
 
-  // 6. Draw filtered/cropped image
-  // Enable high quality image smoothing for digital zoom
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
+  // Draw the cropped video frame to canvas (single-pass for crisp output)
+  // Enable high-quality smoothing only if we're downscaling
+  const isDownscaling = (zoomedWidth > dom.canvas.width) || (zoomedHeight > dom.canvas.height);
+  ctx.imageSmoothingEnabled = isDownscaling;
+  ctx.imageSmoothingQuality = isDownscaling ? 'high' : 'medium';
 
-  // Apply filters using Context 2D Filter API (Hardware Accelerated)
-  // This matches the preview CSS and adds a subtle "Pro" enhancement to base photos
+  // Build filter chain for canvas rendering
   const brightnessVal = 1 + state.featureState.exposureValue * 0.18;
   const filterCss = cssForFilter(state.featureState.currentFilter);
   const filterParts = [];
@@ -657,22 +660,24 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
   if (filterCss) {
     filterParts.push(filterCss);
   } else {
-     // Apply "Smart Enhance" for Normal mode: slight pop in contrast and saturation
+     // Subtle enhancement for normal mode
      filterParts.push('contrast(1.02) saturate(1.05)');
   }
 
-  // Apply exposure
   if (brightnessVal !== 1) {
     filterParts.push(`brightness(${brightnessVal})`);
   }
   
-  // Set the filter on the context before drawing
   if (filterParts.length > 0) {
     ctx.filter = filterParts.join(' ');
   }
 
-  // Draw the zoomed crop onto the full canvas size (digital zoom upscale)
-  ctx.drawImage(dom.video, sx, sy, cropW, cropH, 0, 0, dom.canvas.width, dom.canvas.height);
+  // Single drawImage call: source crop -> destination canvas (no intermediate scaling)
+  ctx.drawImage(
+    dom.video,
+    sx, sy, zoomedWidth, zoomedHeight,  // Source rectangle (cropped region)
+    0, 0, dom.canvas.width, dom.canvas.height  // Destination (full canvas)
+  );
   
   // Reset filter and apply subtle sharpening for crisp output
   ctx.filter = 'none';

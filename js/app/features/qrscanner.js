@@ -1,12 +1,16 @@
 import { state } from '../state.js';
+import { showStatus } from '../core/status.js';
 
 /**
  * QR Code Scanner Feature
  * Scans QR codes from the camera feed for equipment IDs or location markers
+ * Enhanced with history, actions, and improved UX
  */
 
 let scannerActive = false;
 let animationId = null;
+let scanHistory = [];
+const MAX_HISTORY = 20;
 
 export function initQRScanner(dom) {
     const qrScanner = document.getElementById('qr-scanner');
@@ -30,12 +34,29 @@ export function initQRScanner(dom) {
         return;
     }
     
+    // Flashlight toggle for QR scanning
+    const flashlightToggle = document.getElementById('qr-flashlight-toggle');
+    if (flashlightToggle) {
+        flashlightToggle.addEventListener('click', async () => {
+            const video = document.getElementById('video');
+            const track = video?.srcObject?.getVideoTracks()[0];
+            if (track && 'torch' in track.getCapabilities()) {
+                const currentTorch = track.getSettings().torch || false;
+                await track.applyConstraints({
+                    advanced: [{ torch: !currentTorch }]
+                });
+                flashlightToggle.classList.toggle('active', !currentTorch);
+            }
+        });
+    }
+    
     // Open scanner
     qrBtn.addEventListener('click', async () => {
         qrScanner.setAttribute('aria-hidden', 'false');
         scannerActive = true;
         resultDiv.style.display = 'none';
         resultDiv.textContent = '';
+        updateHistoryDisplay();
         startQRScan();
         console.log('📷 QR Scanner opened');
     });
@@ -115,9 +136,40 @@ function handleQRCodeDetected(data) {
     
     console.log('✅ QR Code detected:', data);
     
-    // Display result
-    resultDiv.innerHTML = `<strong>QR Code:</strong><br>${escapeHtml(data)}`;
+    // Vibrate on success
+    if ('vibrate' in navigator) {
+        navigator.vibrate([100, 50, 100]);
+    }
+    
+    // Add to history (avoid duplicates)
+    if (!scanHistory.some(item => item.data === data)) {
+        scanHistory.unshift({
+            data,
+            timestamp: Date.now(),
+            type: detectQRType(data)
+        });
+        if (scanHistory.length > MAX_HISTORY) {
+            scanHistory = scanHistory.slice(0, MAX_HISTORY);
+        }
+        updateHistoryDisplay();
+    }
+    
+    // Detect QR type and show appropriate actions
+    const qrType = detectQRType(data);
+    const actions = generateActions(data, qrType);
+    
+    // Display result with actions
+    resultDiv.innerHTML = `
+        <div class="qr-result-header">
+            <strong>✅ ${qrType} Detected</strong>
+        </div>
+        <div class="qr-result-data">${escapeHtml(truncateText(data, 100))}</div>
+        <div class="qr-result-actions">${actions}</div>
+    `;
     resultDiv.style.display = 'block';
+    
+    // Attach action handlers
+    attachActionHandlers(resultDiv, data, qrType);
     
     // Store QR data in state
     state.lastQRCode = data;
@@ -126,13 +178,8 @@ function handleQRCodeDetected(data) {
     // Play success beep
     playSuccessBeep();
     
-    // Auto-close after 3 seconds
-    setTimeout(() => {
-        if (qrScanner.getAttribute('aria-hidden') === 'false') {
-            stopScanning();
-            qrScanner.setAttribute('aria-hidden', 'true');
-        }
-    }, 3000);
+    // Stop scanning but don't auto-close - let user interact
+    stopScanning();
 }
 
 function stopScanning() {
@@ -191,6 +238,148 @@ function playSuccessBeep() {
     }
 }
 
+function detectQRType(data) {
+    if (/^https?:\/\//i.test(data)) return 'URL';
+    if (/^mailto:/i.test(data)) return 'Email';
+    if (/^tel:/i.test(data)) return 'Phone';
+    if (/^geo:/i.test(data)) return 'Location';
+    if (/^wifi:/i.test(data)) return 'WiFi';
+    if (data.startsWith('{') || data.startsWith('[')) return 'JSON';
+    return 'Text';
+}
+
+function generateActions(data, type) {
+    const buttons = [];
+    
+    buttons.push('<button class="qr-action-btn" data-action="copy">📋 Copy</button>');
+    
+    if (type === 'URL') {
+        buttons.push('<button class="qr-action-btn" data-action="open">🔗 Open Link</button>');
+    } else if (type === 'Email') {
+        buttons.push('<button class="qr-action-btn" data-action="email">📧 Email</button>');
+    } else if (type === 'Phone') {
+        buttons.push('<button class="qr-action-btn" data-action="call">📞 Call</button>');
+    } else if (type === 'Location') {
+        buttons.push('<button class="qr-action-btn" data-action="maps">🗺️ Maps</button>');
+    }
+    
+    buttons.push('<button class="qr-action-btn" data-action="share">📤 Share</button>');
+    buttons.push('<button class="qr-action-btn" data-action="rescan">🔄 Scan Again</button>');
+    
+    return buttons.join('');
+}
+
+function attachActionHandlers(resultDiv, data, type) {
+    const actionBtns = resultDiv.querySelectorAll('.qr-action-btn');
+    
+    actionBtns.forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const action = btn.dataset.action;
+            
+            switch(action) {
+                case 'copy':
+                    await copyToClipboard(data);
+                    showStatus('✅ Copied to clipboard');
+                    break;
+                case 'open':
+                    window.open(data, '_blank');
+                    break;
+                case 'email':
+                    window.location.href = data;
+                    break;
+                case 'call':
+                    window.location.href = data;
+                    break;
+                case 'maps':
+                    window.open(data, '_blank');
+                    break;
+                case 'share':
+                    await shareQRData(data);
+                    break;
+                case 'rescan':
+                    resultDiv.style.display = 'none';
+                    startQRScan();
+                    break;
+            }
+        });
+    });
+}
+
+async function copyToClipboard(text) {
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            // Fallback
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+        }
+    } catch (err) {
+        console.error('Copy failed:', err);
+    }
+}
+
+async function shareQRData(data) {
+    try {
+        if (navigator.share) {
+            await navigator.share({
+                title: 'QR Code Data',
+                text: data
+            });
+        } else {
+            await copyToClipboard(data);
+            showStatus('📋 Copied to clipboard (share not available)');
+        }
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            console.error('Share failed:', err);
+        }
+    }
+}
+
+function truncateText(text, maxLength) {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+}
+
+function updateHistoryDisplay() {
+    const historyContainer = document.getElementById('qr-history');
+    if (!historyContainer) return;
+    
+    if (scanHistory.length === 0) {
+        historyContainer.innerHTML = '<div class="qr-history-empty">No scan history yet</div>';
+        return;
+    }
+    
+    const historyHTML = scanHistory.slice(0, 5).map(item => {
+        const date = new Date(item.timestamp).toLocaleTimeString();
+        return `
+            <div class="qr-history-item" data-qr="${escapeHtml(item.data)}">
+                <div class="qr-history-type">${item.type}</div>
+                <div class="qr-history-data">${escapeHtml(truncateText(item.data, 40))}</div>
+                <div class="qr-history-time">${date}</div>
+            </div>
+        `;
+    }).join('');
+    
+    historyContainer.innerHTML = historyHTML;
+    
+    // Add click handlers to history items
+    historyContainer.querySelectorAll('.qr-history-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const data = item.dataset.qr;
+            handleQRCodeDetected(data);
+        });
+    });
+}
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -207,6 +396,15 @@ export function getLastQRCode() {
 export function clearQRCode() {
     state.lastQRCode = null;
     state.lastQRCodeTimestamp = null;
+}
+
+export function getScanHistory() {
+    return scanHistory;
+}
+
+export function clearScanHistory() {
+    scanHistory = [];
+    updateHistoryDisplay();
 }
 
 // Note: This feature works best with the jsQR library

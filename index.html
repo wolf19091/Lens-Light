@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000">
     <meta name="description" content="Professional camera app for survey and field work with GPS, compass, and sensor integration">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data: https:; connect-src 'self' https://nominatim.openstreetmap.org https://geocode.maps.co https://api.open-meteo.com; worker-src 'self'; manifest-src 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data: https:; connect-src 'self' https://nominatim.openstreetmap.org https://geocode.maps.co https://api.open-meteo.com https://api.bigdatacloud.net https://cdn.jsdelivr.net; worker-src 'self'; manifest-src 'self'">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" href="sec-lens-logo.png">
     <link rel="apple-touch-icon" href="sec-lens-logo.png">
@@ -298,6 +298,12 @@
                 </label>
             </label>
         </div>
+
+        <div class="setting-item" style="justify-content: center; padding: 15px 0; opacity: 0.7;">
+            <div id="settings-version-display" style="font-size: 0.9em; color: var(--text-secondary);">
+                Lens Light v<span id="settings-version-number">--</span>
+            </div>
+        </div>
         
         <div class="setting-item" style="border-bottom: none;">
             <button class="clear-data-btn" id="clear-all-data-btn" type="button">
@@ -331,12 +337,21 @@
     <div id="qr-scanner" role="dialog" aria-labelledby="qr-scanner-title" aria-hidden="true">
         <div class="gallery-header">
             <h2 id="qr-scanner-title">⊡ QR Code Scanner</h2>
-            <button class="close-btn" id="close-qr-scanner" aria-label="Close QR scanner" type="button">Close</button>
+            <div style="display: flex; gap: 8px;">
+                <button class="action-btn" id="qr-flashlight-toggle" title="Toggle flashlight" aria-label="Toggle flashlight" type="button">🔦</button>
+                <button class="close-btn" id="close-qr-scanner" aria-label="Close QR scanner" type="button">Close</button>
+            </div>
         </div>
         <div id="qr-scanner-viewport">
             <canvas id="qr-canvas" style="display:none;"></canvas>
-            <div class="qr-scan-frame"></div>
+            <div class="qr-scan-frame">
+                <div class="qr-scan-line"></div>
+            </div>
             <div id="qr-result" style="display:none;"></div>
+        </div>
+        <div id="qr-history-panel">
+            <div class="qr-history-header">Recent Scans</div>
+            <div id="qr-history"></div>
         </div>
     </div>
 
@@ -383,8 +398,8 @@
     <canvas id="hidden-canvas" style="display:none;" aria-hidden="true"></canvas>
 
     <!-- QR Code Scanner Library -->
-    <!-- Using unpkg.com instead of jsdelivr to avoid tracking prevention blocks -->
-    <script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js" defer></script>
+    <!-- Using jsdelivr for better reliability and avoiding tracking prevention blocks on unpkg -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js" defer></script>
 
     <script type="module" src="js/main.js" defer></script>
 </body>

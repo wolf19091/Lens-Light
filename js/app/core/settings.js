@@ -1,6 +1,7 @@
 import { state } from '../state.js';
 import { sanitizeInput } from './utils.js';
 import { setLanguage, t } from './i18n.js';
+import { APP_VERSION } from '../../version.js';
 
 export function saveSettings() {
   try {
@@ -30,6 +31,12 @@ export function loadSettings(dom) {
   
   if (dom?.toggleBattery) dom.toggleBattery.checked = Boolean(state.settings.batteryMode);
   if (dom?.batteryModeIndicator) dom.batteryModeIndicator.style.display = state.settings.batteryMode ? 'inline-flex' : 'none';
+
+  // Populates version
+  const versionEl = document.getElementById('settings-version-number');
+  const headerVersionEl = document.getElementById('app-version');
+  if (versionEl) versionEl.textContent = APP_VERSION;
+  if (headerVersionEl) headerVersionEl.textContent = `v${APP_VERSION}`;
 
   // NEW SETTINGS
   const toggleHdr = document.getElementById('toggle-hdr');

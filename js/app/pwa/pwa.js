@@ -19,11 +19,9 @@ export function registerServiceWorker() {
     navigator.serviceWorker.addEventListener('message', (event) => {
       if (event.data && event.data.type === 'SW_UPDATED') {
         console.log('🔄 New version available:', event.data.version);
-        console.log('🔄 Reloading to activate new version...');
-        // Small delay to ensure SW is fully activated
-        setTimeout(() => {
-          window.location.reload();
-        }, 100);
+        // We rely on controllerchange for the actual reload to avoid duplicates,
+        // but if controllerchange doesn't fire (e.g. strict message update), we can prompt.
+        // For now, let's trust controllerchange.
       }
     });
 
