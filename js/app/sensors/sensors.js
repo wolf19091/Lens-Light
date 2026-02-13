@@ -49,15 +49,58 @@ export function startSensors(dom, { showStatus, maybeUpdateCustomLocationFromWeb
     return;
   }
 
+  const watchOptions = getGPSWatchOptions();
   state.gpsWatchId = navigator.geolocation.watchPosition(
     (pos) => updateGPS(pos, dom, { maybeUpdateCustomLocationFromWeb }),
     (err) => handleGPSError(err, dom, { showStatus }),
-    {
-      enableHighAccuracy: true,
-      maximumAge: state.settings.batteryMode ? 5000 : 0,
-      timeout: 15000
-    }
+    watchOptions
   );
+}
+
+function getGPSWatchOptions() {
+  if (state.featureState.gpsPrecisionMode) {
+    return {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 25000
+    };
+  }
+
+  return {
+    enableHighAccuracy: true,
+    maximumAge: state.settings.batteryMode ? 5000 : 0,
+    timeout: 15000
+  };
+}
+
+export async function requestPreciseLocation(dom, { showStatus, maybeUpdateCustomLocationFromWeb } = {}) {
+  if (!navigator.geolocation) {
+    showStatus?.(t('gpsNotSupported'), 3000);
+    return false;
+  }
+
+  state.featureState.gpsPrecisionMode = true;
+
+  const preciseFix = await new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve(pos),
+      (err) => reject(err),
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 25000
+      }
+    );
+  }).catch((err) => {
+    handleGPSError(err, dom, { showStatus });
+    return null;
+  });
+
+  if (!preciseFix) return false;
+
+  updateGPS(preciseFix, dom, { maybeUpdateCustomLocationFromWeb });
+  startSensors(dom, { showStatus, maybeUpdateCustomLocationFromWeb });
+  return true;
 }
 
 function getCardinalDirection(heading) {
@@ -219,6 +262,34 @@ export async function reverseGeocodeFromWeb(lat, lon) {
   const cached = state.geocodeCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < state.CACHE_EXPIRY) return cached.label;
 
+  async function reverseGeocodeWithNominatim() {
+    const fallbackUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const res = await fetch(fallbackUrl, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) throw new Error(`Nominatim reverse geocode failed: ${res.status}`);
+
+    const data = await res.json();
+    const addr = data?.address || {};
+
+    const city = addr.city || addr.town || addr.village || addr.hamlet || addr.municipality || '';
+    const region = addr.state || addr.county || addr.region || '';
+    const country = addr.country || '';
+
+    const parts = [];
+    if (city) parts.push(city);
+    if (region && region !== city && !String(city).includes(region)) parts.push(region);
+    if (country && parts.length < 2) parts.push(country);
+
+    return parts.filter(Boolean).join(', ') || '';
+  }
+
   try {
     // INFO: Switched from geocode.maps.co (401 issues) to BigDataCloud (Client-side friendly, no key)
     // and Nominatim (OSM) as backup structure is different.
@@ -266,7 +337,7 @@ export async function reverseGeocodeFromWeb(lat, lon) {
 
     if (city) parts.push(city);
     // Only add region if it's different/meaningful
-    if (region && region !== city && !city.includes(region)) parts.push(region);
+    if (region && region !== city && !String(city).includes(region)) parts.push(region);
     
     // Only add country if strictly necessary or if we have very little else
     if (country) {
@@ -280,9 +351,18 @@ export async function reverseGeocodeFromWeb(lat, lon) {
 
     return label;
   } catch (e) {
-    // validation and cleanup
-    if (e?.name !== 'AbortError') console.warn('reverseGeocodeFromWeb failed', e);
-    return '';
+    if (e?.name !== 'AbortError') console.warn('reverseGeocodeFromWeb failed, trying fallback', e);
+    try {
+      const fallbackLabel = await reverseGeocodeWithNominatim();
+      if (fallbackLabel) {
+        state.geocodeCache.set(cacheKey, { label: fallbackLabel, timestamp: Date.now() });
+        if (state.geocodeCache.size > 50) state.geocodeCache.delete(state.geocodeCache.keys().next().value);
+      }
+      return fallbackLabel;
+    } catch (fallbackError) {
+      if (fallbackError?.name !== 'AbortError') console.warn('reverseGeocode fallback failed', fallbackError);
+      return '';
+    }
   }
 }
 

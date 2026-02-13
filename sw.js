@@ -1,5 +1,8 @@
-// Import version for cache naming
-import { CACHE_NAME, APP_VERSION } from './js/version.js';
+// Service workers can be loaded as classic scripts in some browsers/cached registrations.
+// Keep these constants local to avoid ESM import parsing failures.
+const APP_VERSION = '7.1.1';
+const CACHE_PREFIX = 'lenslight';
+const CACHE_NAME = `${CACHE_PREFIX}-v${APP_VERSION}`;
 
 console.log(`🔧 Service Worker v${APP_VERSION} initializing...`);
 

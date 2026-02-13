@@ -38,7 +38,7 @@ import {
   applyExposureToTrackOrPreview
 } from './app/camera/camera.js';
 import { clamp } from './app/core/utils.js';
-import { startSensors, stopSensors, maybeUpdateCustomLocationFromWebFactory, updateWeatherDisplay } from './app/sensors/sensors.js';
+import { startSensors, stopSensors, maybeUpdateCustomLocationFromWebFactory, updateWeatherDisplay, requestPreciseLocation } from './app/sensors/sensors.js';
 
 // NEW FEATURES
 import { initTapToFocus } from './app/features/focus.js';
@@ -73,6 +73,70 @@ function warnIfElementCovered(el) {
   if (!topEl) return;
   if (topEl === el || el.contains(topEl)) return;
   console.warn('shutter element may be covered by', topEl);
+}
+
+function inspectVideoDebugState(dom, { showStatus } = {}) {
+  const video = dom?.video;
+  if (!video) return;
+
+  const srcAttr = video.getAttribute('src');
+  const sourceValues = Array.from(video.querySelectorAll('source'))
+    .map((el) => el.getAttribute('src'))
+    .filter(Boolean);
+
+  console.log('🎥 Video element investigation', {
+    srcAttribute: srcAttr || '(none)',
+    sourceChildren: sourceValues.length ? sourceValues : ['(none)'],
+    hasSrcObject: Boolean(video.srcObject),
+    readyState: video.readyState,
+    paused: video.paused,
+    networkState: video.networkState,
+    error: video.error
+      ? {
+          code: video.error.code,
+          message: video.error.message || '(no message)'
+        }
+      : null
+  });
+
+  if (video.error) {
+    console.error('❌ video.error detected', {
+      code: video.error.code,
+      message: video.error.message || '(no message)'
+    });
+  }
+
+  if (!video.__debugErrorListenerAdded) {
+    video.addEventListener('error', () => {
+      const err = video.error;
+      console.error('❌ Video playback error event', {
+        code: err?.code,
+        message: err?.message || '(no message)'
+      });
+    });
+    video.__debugErrorListenerAdded = true;
+  }
+
+  // Investigation notes:
+  // - The <video id="video"> markup has no src attribute and no <source> children by default.
+  // - This app is designed to feed the video via srcObject from getUserMedia in initCamera().
+  // - If src/srcObject is missing and readyState stays 0, camera stream wiring likely failed.
+  if (!video.srcObject && !srcAttr && sourceValues.length === 0 && video.readyState === 0) {
+    console.warn('⚠️ Video has no source and readyState is 0. Check camera stream connection (getUserMedia/srcObject).');
+
+    // Optional debug fallback: set localStorage.debug_video_test_src = 'true' to test rendering pipeline
+    // without using camera stream. Disabled by default to avoid changing production behavior.
+    if (localStorage.getItem('debug_video_test_src') === 'true') {
+      const testUrl = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
+      video.src = testUrl;
+      video.load();
+      video.play().then(() => {
+        showStatus?.('🎬 Debug video source loaded', 2200);
+      }).catch((e) => {
+        console.error('❌ Dummy debug video play failed', e);
+      });
+    }
+  }
 }
 
 // Bootstrap helpers
@@ -450,6 +514,33 @@ dom.gridBtn?.addEventListener('click', () => {
   showStatus(state.featureState.gridEnabled ? '⊞ Grid ON' : '⊞ Grid OFF', 1500);
 });
 
+dom.gpsPrecisionBtn?.addEventListener('click', async () => {
+  dom.gpsPrecisionBtn.disabled = true;
+  showStatus(state.currentLang === 'ar' ? '🔄 تحسين دقة الموقع...' : '🔄 Improving location accuracy...', 1800);
+
+  const maybeUpdate = maybeUpdateCustomLocationFromWebFactory(dom);
+  const improved = await requestPreciseLocation(dom, {
+    showStatus,
+    maybeUpdateCustomLocationFromWeb: maybeUpdate
+  });
+
+  applyFeatureUI(dom);
+  dom.gpsPrecisionBtn.disabled = false;
+
+  if (!improved) {
+    showStatus(state.currentLang === 'ar' ? '❌ تعذر تحسين دقة الموقع' : '❌ Could not improve location accuracy', 3000);
+    return;
+  }
+
+  const accuracy = Math.round(state.currentAccuracy || 0);
+  showStatus(
+    state.currentLang === 'ar'
+      ? `✅ تم تحسين الدقة: ${accuracy}م`
+      : `✅ Accuracy improved: ${accuracy}m`,
+    2200
+  );
+});
+
 dom.levelBtn?.addEventListener('click', () => {
   state.featureState.levelEnabled = !state.featureState.levelEnabled;
   applyFeatureUI(dom);
@@ -590,6 +681,7 @@ window.addEventListener('orientationchange', updateAppVh);
 updateAppVh();
 loadSettings(dom);
 applyFeatureUI(dom);
+inspectVideoDebugState(dom, { showStatus });
 
 // Display version in UI
 const versionEl = document.getElementById('app-version');
@@ -611,6 +703,7 @@ async function bootstrap() {
   await loadPhotos(dom);
   updateGalleryUI(dom);
   checkStoredPermissionsAndBootstrap();
+  setTimeout(() => inspectVideoDebugState(dom, { showStatus }), 2500);
   registerServiceWorker();
 }
 

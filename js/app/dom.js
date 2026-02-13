@@ -33,6 +33,7 @@ export function getDom() {
 
     // feature controls
     gridBtn: $('grid-btn'),
+    gpsPrecisionBtn: $('gps-precision-btn'),
     gridOverlay: $('grid-overlay'),
     levelBtn: $('level-btn'),
     levelIndicator: $('level-indicator'),

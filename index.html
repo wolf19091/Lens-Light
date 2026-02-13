@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000">
     <meta name="description" content="Professional camera app for survey and field work with GPS, compass, and sensor integration">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data: https:; connect-src 'self' https://nominatim.openstreetmap.org https://geocode.maps.co https://api.open-meteo.com https://api.bigdatacloud.net https://cdn.jsdelivr.net; worker-src 'self'; manifest-src 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data: https:; connect-src 'self' https://nominatim.openstreetmap.org https://geocode.maps.co https://api.open-meteo.com https://api.bigdatacloud.net https://api-bdc.io https://cdn.jsdelivr.net; worker-src 'self'; manifest-src 'self'">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" href="sec-lens-logo.png">
     <link rel="apple-touch-icon" href="sec-lens-logo.png">
@@ -110,6 +110,7 @@
         <!-- Feature Controls -->
         <div id="feature-controls" role="toolbar" aria-label="Camera features">
             <button class="feature-btn active" id="grid-btn" title="Grid Overlay" aria-label="Toggle grid overlay" aria-pressed="true" type="button">⊞</button>
+            <button class="feature-btn" id="gps-precision-btn" title="High Accuracy GPS" aria-label="Improve GPS location accuracy" aria-pressed="false" type="button">📍</button>
             <button class="feature-btn" id="level-btn" title="Level Indicator" aria-label="Toggle level indicator" aria-pressed="false" type="button">⚖️</button>
             <button class="feature-btn" id="timer-btn" title="Self Timer" aria-label="Self timer options" aria-haspopup="true" aria-expanded="false" type="button">⏱️</button>
             <button class="feature-btn" id="flashlight-btn" title="Flashlight" aria-label="Toggle flashlight" aria-pressed="false" type="button">🔦</button>

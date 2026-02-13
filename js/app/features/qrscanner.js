@@ -1,5 +1,17 @@
 import { state } from '../state.js';
-import { showStatus } from '../core/status.js';
+import * as statusModule from '../core/status.js';
+
+function showStatus(message, duration = 2500) {
+    if (typeof statusModule.showStatus === 'function') {
+        statusModule.showStatus(message, duration);
+        return;
+    }
+    const statusEl = document.getElementById('status-msg');
+    if (!statusEl) return;
+    statusEl.textContent = String(message);
+    statusEl.classList.add('show');
+    setTimeout(() => statusEl.classList.remove('show'), duration);
+}
 
 /**
  * QR Code Scanner Feature

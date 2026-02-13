@@ -26,6 +26,7 @@ export const state = {
   // feature state
   featureState: {
     gridEnabled: true,
+    gpsPrecisionMode: false,
     levelEnabled: false,
     timerDelay: 0,
     flashlightOn: false,
