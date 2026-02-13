@@ -131,16 +131,25 @@ body {
     position: fixed;
     top: 0;
     left: 0;
+    right: 0;
+    bottom: 0;
     width: 100%;
+    height: 100%;
     height: calc(var(--app-vh, 1vh) * 100);
     z-index: 0;
+    overflow: hidden;
+    background-color: #000;
 }
 
 video {
+    display: block;
+    position: absolute; /* Absolute positioning ensures it fills the relative/fixed parent */
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;  /* Fill viewport, crop excess (never stretch) */
-    object-position: center center;  /* Center the video frame */
+    object-fit: cover;
+    object-position: center;
 }
 
 /* ===================================================================
@@ -396,7 +405,7 @@ body::after {
 /* ===================================================================
    9. DATA CONTAINER (Bottom Right)
    =================================================================== */
-#data-container {
+/* #data-container {
     position: absolute;
     bottom: calc(150px + var(--safe-bottom));
     right: calc(10px + var(--safe-right));
@@ -412,6 +421,23 @@ body::after {
     transition: var(--transition-smooth);
     position: relative;
     overflow: hidden;
+} */
+
+#data-container {
+    position: absolute; /* This should be the ONLY position declaration */
+    bottom: calc(150px + var(--safe-bottom));
+    right: calc(10px + var(--safe-right));
+    text-align: right;
+    background: linear-gradient(135deg, rgba(16,18,24,0.75), rgba(16,18,24,0.65));
+    padding: 16px 18px;
+    border-radius: var(--radius-lg);
+    border: 1.5px solid var(--stroke);
+    backdrop-filter: blur(25px) saturate(180%);
+    -webkit-backdrop-filter: blur(25px) saturate(180%);
+    max-width: calc(100vw - 120px);
+    box-shadow: var(--shadow), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+    transition: var(--transition-smooth);
+    overflow: hidden; /* This was previously after position: relative */
 }
 
 #data-container::before {
@@ -632,13 +658,13 @@ body::after {
    =================================================================== */
 #feature-controls {
     position: absolute;
-    top: calc(100px + var(--safe-top));
+    top: calc(172px + var(--safe-top));
     left: calc(8px + var(--safe-left));
     display: flex;
     flex-direction: column;
     gap: 8px;
     z-index: 10;
-    max-height: calc(100vh - 220px);
+    max-height: calc(100vh - 290px);
     overflow-y: auto;
     scrollbar-width: none;
 }
@@ -2453,13 +2479,13 @@ body {
 }
 
 body::before {
-    background: radial-gradient(ellipse at 50% 30%, rgba(5, 25, 38, 0.12) 0%, rgba(3, 7, 12, 0.32) 58%, rgba(1, 2, 4, 0.48) 100%);
+    background: radial-gradient(ellipse at 50% 30%, rgba(5, 25, 38, 0.22) 0%, rgba(3, 7, 12, 0.7) 58%, rgba(1, 2, 4, 0.95) 100%);
 }
 
 body::after {
     background: conic-gradient(from 180deg at 50% 45%, rgba(33, 199, 149, 0.14), rgba(245, 157, 61, 0.1), rgba(14, 81, 122, 0.12), rgba(33, 199, 149, 0.14));
-    opacity: 0.12;
-    animation: none;
+    opacity: 0.38;
+    animation: ambientSpin 14s linear infinite;
 }
 
 @keyframes ambientSpin {
@@ -2472,7 +2498,7 @@ body::after {
     position: fixed;
     inset: 0;
     pointer-events: none;
-    background: linear-gradient(180deg, rgba(3, 9, 14, 0.18) 0%, transparent 18%, transparent 78%, rgba(3, 9, 14, 0.22) 100%);
+    background: linear-gradient(180deg, rgba(3, 9, 14, 0.46) 0%, transparent 22%, transparent 72%, rgba(3, 9, 14, 0.62) 100%);
     z-index: 1;
 }
 
@@ -2633,10 +2659,8 @@ body::after {
 
 #feature-controls {
     position: fixed;
-    top: calc(92px + var(--safe-top));
-    left: calc(12px + var(--safe-left));
-    gap: 7px;
-    max-height: calc(100vh - 260px);
+        top: calc(180px + var(--safe-top));
+    max-height: calc(100vh - 340px);
     padding: 8px;
     border-radius: 20px;
     border: 1px solid var(--stroke);
@@ -3033,13 +3057,13 @@ body::after {
 
     #feature-controls {
         position: fixed;
-        top: calc(98px + var(--safe-top));
+        top: calc(172px + var(--safe-top));
         left: calc(8px + var(--safe-left));
         right: auto;
         bottom: auto;
         transform: none;
         width: auto;
-        max-height: calc(100vh - 220px);
+        max-height: calc(100vh - 300px);
         padding: 7px;
         flex-direction: column;
         overflow-x: hidden;
@@ -3173,12 +3197,12 @@ body::after {
     }
 
     #feature-controls {
-        top: calc(98px + var(--safe-top));
+        top: calc(152px + var(--safe-top));
         left: calc(6px + var(--safe-left));
         right: auto;
         transform: none;
         width: auto;
-        max-height: calc(100vh - 190px);
+        max-height: calc(100vh - 260px);
         flex-direction: column;
         overflow-x: hidden;
         overflow-y: auto;
@@ -3357,6 +3381,9 @@ body::after {
     --z-burst: 30;
     --z-settings: 50;
     --z-topbar: 55;
+    --z-compass-container: 56;
+    --z-weather-info: 56;
+    --z-data-container: 57;
     --z-feature-controls: 58;
     --z-perm-btn: 59;
     --z-gallery: 60;
@@ -3575,68 +3602,6 @@ body {
     }
 }
 
-/* --- Performance: cap blur, kill heavy animations, reduce shadows --- */
-#settings-panel {
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-}
-
-#gallery-modal {
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-}
-
-.feature-btn {
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-}
-
-#zoom-controls {
-    backdrop-filter: blur(16px) saturate(130%);
-    -webkit-backdrop-filter: blur(16px) saturate(130%);
-}
-
-#topbar {
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-}
-
-#controls {
-    backdrop-filter: blur(20px) saturate(130%);
-    -webkit-backdrop-filter: blur(20px) saturate(130%);
-}
-
-#data-container::before {
-    animation: none;
-}
-
-#map-dot {
-    animation: none;
-    box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.12), 0 0 10px rgba(34, 211, 238, 0.3);
-}
-
-/* --- Z-Index: apply CSS variables to key layers --- */
-#camera-view { z-index: var(--z-camera); }
-body::before, body::after { z-index: var(--z-vignette); }
-.ui-layer { z-index: var(--z-ui-layer); }
-#grid-overlay { z-index: var(--z-grid); }
-#level-indicator { z-index: var(--z-level); }
-#controls { z-index: var(--z-controls); }
-#burst-indicator { z-index: var(--z-burst); }
-#settings-panel { z-index: var(--z-settings); }
-#topbar { z-index: var(--z-topbar); }
-#feature-controls { z-index: var(--z-feature-controls); }
-#ios-perm-btn { z-index: var(--z-perm-btn); }
-#gallery-modal { z-index: var(--z-gallery); }
-#timer-menu, #filter-menu { z-index: var(--z-menus); }
-#photo-viewer { z-index: var(--z-photo-viewer); }
-#status-msg { z-index: var(--z-status-msg); }
-#timer-countdown { z-index: var(--z-countdown); }
-#flash { z-index: var(--z-flash); }
-#focus-ring { z-index: var(--z-flash); }
-#wb-control { z-index: var(--z-wb-control); }
-#qr-scanner, #comparison-mode { z-index: var(--z-fullscreen-modal); }
-
 /* ===================================================================
    32. ADDITIONAL RESPONSIVE: <=480px & LANDSCAPE
    =================================================================== */
@@ -3708,6 +3673,7 @@ body::before, body::after { z-index: var(--z-vignette); }
     }
 
     #feature-controls {
+        top: calc(146px + var(--safe-top));
         padding: 4px;
         gap: 4px;
     }
@@ -3758,8 +3724,8 @@ body::before, body::after { z-index: var(--z-vignette); }
     }
 
     #feature-controls {
-        top: calc(52px + var(--safe-top));
-        max-height: calc(100vh - 120px);
+        top: calc(110px + var(--safe-top) + var(--compass-container-height));
+        max-height: calc(100vh - 180px);
         padding: 4px;
         gap: 3px;
     }
