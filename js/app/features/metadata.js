@@ -8,49 +8,47 @@ import { dbGetPhoto } from '../storage/photoDb.js';
 
 export function initMetadataExport(dom) {
     const exportBtn = document.getElementById('export-metadata-btn');
-    
+
     if (!exportBtn) {
         console.warn('Export metadata button not found');
         return;
     }
-    
+
     exportBtn.addEventListener('click', async () => {
         // Import state to access photos
         const { state } = await import('../state.js');
-        
+
         // Show format selection
         const format = await showFormatDialog();
         if (!format) return;
-        
+
         // Get selected photos or all photos
         const selectedItems = Array.from(document.querySelectorAll('.gallery-item.selected'));
-        
+
         let photoIds;
         if (selectedItems.length > 0) {
-            photoIds = selectedItems.map(item => parseInt(item.dataset.photoId));
+            photoIds = selectedItems.map(item => parseInt(item.dataset.photoId, 10));
         } else {
             // Export all photos from state
             photoIds = state.photos.map(p => p.id);
         }
-        
+
         if (photoIds.length === 0) {
             alert('No photos to export');
             return;
         }
-        
+
         // Load full photo data
-        const photos = await Promise.all(
-            photoIds.map(id => dbGetPhoto(id))
-        );
-        
+        const photos = await Promise.all(photoIds.map(id => dbGetPhoto(id)));
+
         // Export based on format
         if (format === 'csv') {
             await exportMetadataAsCSV(photos.filter(Boolean));
         } else if (format === 'json') {
             await exportMetadataAsJSON(photos.filter(Boolean));
         }
-        
-        console.log(`📊 Exported metadata for ${photos.length} photos as ${format.toUpperCase()}`);
+
+        console.log(`[Metadata] Exported metadata for ${photos.length} photos as ${format.toUpperCase()}`);
     });
 }
 
@@ -62,17 +60,18 @@ async function showFormatDialog() {
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(20, 20, 25, 0.95);
+            background: linear-gradient(165deg, rgba(0, 24, 58, 0.97), rgba(0, 31, 94, 0.9));
             backdrop-filter: blur(30px);
             padding: 24px;
             border-radius: 18px;
-            border: 1px solid rgba(255,255,255,0.15);
-            box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+            border: 1px solid rgba(230, 232, 235, 0.28);
+            box-shadow: 0 18px 50px rgba(0, 9, 25, 0.58);
             z-index: 10000;
             min-width: 300px;
             text-align: center;
+            color: #F2F3F5;
         `;
-        
+
         dialog.innerHTML = `
             <h3 style="margin: 0 0 20px 0; font-size: 18px;">Export Format</h3>
             <button id="export-csv-btn" style="
@@ -80,54 +79,56 @@ async function showFormatDialog() {
                 width: 100%;
                 padding: 12px;
                 margin-bottom: 12px;
-                background: #007AFF;
-                color: white;
-                border: none;
+                background: linear-gradient(135deg, #0080FF, #00FF86);
+                color: #00183A;
+                border: 1px solid rgba(0, 255, 134, 0.8);
                 border-radius: 12px;
                 font-size: 16px;
+                font-weight: 700;
                 cursor: pointer;
-            ">📄 CSV (Excel Compatible)</button>
+            ">CSV (Excel Compatible)</button>
             <button id="export-json-btn" style="
                 display: block;
                 width: 100%;
                 padding: 12px;
                 margin-bottom: 12px;
-                background: #007AFF;
-                color: white;
-                border: none;
+                background: linear-gradient(135deg, #0080FF, #00FF86);
+                color: #00183A;
+                border: 1px solid rgba(0, 255, 134, 0.8);
                 border-radius: 12px;
                 font-size: 16px;
+                font-weight: 700;
                 cursor: pointer;
-            ">📋 JSON (Developer Format)</button>
+            ">JSON (Developer Format)</button>
             <button id="export-cancel-btn" style="
                 display: block;
                 width: 100%;
                 padding: 12px;
-                background: rgba(255,255,255,0.1);
-                color: white;
-                border: none;
+                background: rgba(155, 162, 175, 0.18);
+                color: #F2F3F5;
+                border: 1px solid rgba(230, 232, 235, 0.24);
                 border-radius: 12px;
                 font-size: 16px;
                 cursor: pointer;
             ">Cancel</button>
         `;
-        
+
         document.body.appendChild(dialog);
-        
+
         const cleanup = () => {
             document.body.removeChild(dialog);
         };
-        
+
         dialog.querySelector('#export-csv-btn').addEventListener('click', () => {
             cleanup();
             resolve('csv');
         });
-        
+
         dialog.querySelector('#export-json-btn').addEventListener('click', () => {
             cleanup();
             resolve('json');
         });
-        
+
         dialog.querySelector('#export-cancel-btn').addEventListener('click', () => {
             cleanup();
             resolve(null);
@@ -144,21 +145,21 @@ export async function exportMetadataAsCSV(photos) {
         'Latitude',
         'Longitude',
         'Altitude (m)',
-        'Heading (°)',
+        'Heading (deg)',
         'Accuracy (m)',
         'Location Name',
         'Project Name',
         'Custom Location',
         'Comment',
         'Weather',
-        'Temperature (°C)',
+        'Temperature (C)',
         'QR Code'
     ];
-    
+
     const rows = photos.map(photo => {
         const meta = photo.metadata || {};
         const date = new Date(photo.timestamp);
-        
+
         return [
             photo.id || '',
             photo.filename || `photo_${photo.id}.jpg`,
@@ -178,13 +179,13 @@ export async function exportMetadataAsCSV(photos) {
             meta.qrCode || ''
         ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
     });
-    
+
     const csv = [headers.join(','), ...rows].join('\n');
-    
+
     // Add UTF-8 BOM for Excel compatibility
     const bom = '\uFEFF';
     const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8' });
-    
+
     downloadFile(blob, `photos_metadata_${getTimestamp()}.csv`);
 }
 
@@ -216,10 +217,10 @@ export async function exportMetadataAsJSON(photos) {
         comment: photo.comment,
         settings: photo.settings
     }));
-    
+
     const json = JSON.stringify(data, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
-    
+
     downloadFile(blob, `photos_metadata_${getTimestamp()}.json`);
 }
 
@@ -229,10 +230,10 @@ function downloadFile(blob, filename) {
     a.href = url;
     a.download = filename;
     a.style.display = 'none';
-    
+
     document.body.appendChild(a);
     a.click();
-    
+
     // Cleanup
     setTimeout(() => {
         document.body.removeChild(a);
@@ -252,7 +253,7 @@ export async function exportSinglePhotoMetadata(photoId, format = 'json') {
         console.error('Photo not found:', photoId);
         return;
     }
-    
+
     if (format === 'csv') {
         await exportMetadataAsCSV([photo]);
     } else {

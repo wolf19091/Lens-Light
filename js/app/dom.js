@@ -98,6 +98,7 @@ export function getDom() {
     photoViewer: $('photo-viewer'),
     closePhotoViewerBtn: $('close-photo-viewer'),
     photoViewerImg: $('photo-viewer-img'),
+    photoViewerBgImg: $('photo-viewer-bg-img'),
     photoViewerComment: $('photo-viewer-comment'),
     viewerShareBtn: $('viewer-share-btn'),
     viewerSaveBtn: $('viewer-save-btn'),

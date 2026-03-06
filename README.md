@@ -149,7 +149,7 @@ Lens-Light/
 │           ├── settings.js   # Settings management
 │           ├── status.js     # Status notifications
 │           └── utils.js      # Helper functions
-├── sec-lens-logo.png      # App icon
+├── logo-max-ar-inv.svg      # App icon
 └── README.md              # This file
 ```
 

@@ -10,7 +10,7 @@ console.log(`🔧 Service Worker v${APP_VERSION} initializing...`);
 // NOTE: index.html is intentionally EXCLUDED - it's served network-first without caching
 const ASSETS = [
   './manifest.json',
-  './sec-lens-logo.png',
+  './logo-max-ar-inv.svg',
   './css/style.css',
   './js/version.js',
   './js/main.js',

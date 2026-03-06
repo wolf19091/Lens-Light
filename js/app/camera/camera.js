@@ -274,8 +274,8 @@ function canvasToJpegBlob(canvas, quality) {
 const logoImg = new Image();
 let logoLoadPromise = null;
 // camera.js lives at js/app/camera/camera.js
-// The logo is at the app root: /sec-lens-logo.png
-logoImg.src = new URL('../../../sec-lens-logo.png', import.meta.url).href;
+// The logo is at the app root: /logo-max-ar-inv.svg
+logoImg.src = new URL('../../../logo-max-ar-inv.svg', import.meta.url).href;
 
 function getLogoLoadPromise() {
   if (logoImg.naturalWidth > 0) return Promise.resolve(true);
@@ -306,33 +306,395 @@ async function ensureLogoLoaded(timeoutMs = 1000) {
   return logoImg.naturalWidth > 0;
 }
 
-function addWatermarkToCanvas(ctx, width, height) {
-  const fontSize = Math.max(14, width * 0.015);
-  const padding = fontSize * 1.5;
-  const logoSize = Math.max(40, width * 0.055); // Smaller logo for cleaner look
+function traceRoundedRect(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function fillRoundedRect(ctx, x, y, width, height, radius, fillStyle) {
+  ctx.save();
+  ctx.fillStyle = fillStyle;
+  traceRoundedRect(ctx, x, y, width, height, radius);
+  ctx.fill();
+  ctx.restore();
+}
+
+function createSeededRandom(seedA = 0, seedB = 0) {
+  let seed = (
+    (Math.abs(Math.round(seedA * 1e6)) * 2654435761) ^
+    Math.abs(Math.round(seedB * 1e6)) ^
+    0x9e3779b9
+  ) >>> 0;
+
+  if (!seed) seed = 0x12345678;
+
+  return function next() {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+}
+
+function wrapTextIntoLines(ctx, text, maxWidth, maxLines = 2) {
+  const value = String(text || '').trim();
+  if (!value) return [];
+
+  const words = value.split(/\s+/);
+  const lines = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const trial = currentLine ? `${currentLine} ${word}` : word;
+    if (ctx.measureText(trial).width <= maxWidth || !currentLine) {
+      currentLine = trial;
+      continue;
+    }
+
+    lines.push(currentLine);
+    currentLine = word;
+
+    if (lines.length === maxLines - 1) break;
+  }
+
+  if (currentLine) {
+    let finalLine = currentLine;
+    const usedWords = lines.join(' ').split(/\s+/).filter(Boolean).length;
+    const hasOverflow = usedWords < words.length;
+
+    if (hasOverflow) {
+      const remaining = words.slice(usedWords).join(' ');
+      finalLine = finalLine ? `${finalLine} ${remaining}` : remaining;
+    }
+
+    while (ctx.measureText(`${finalLine}...`).width > maxWidth && finalLine.length > 1) {
+      finalLine = finalLine.slice(0, -1).trimEnd();
+    }
+
+    if (hasOverflow && finalLine) {
+      finalLine = `${finalLine}...`;
+    }
+
+    lines.push(finalLine);
+  }
+
+  return lines.slice(0, maxLines);
+}
+
+function drawTextLines(ctx, lines, x, startY, lineHeight) {
+  let y = startY;
+  for (const line of lines) {
+    ctx.fillText(line, x, y);
+    y += lineHeight;
+  }
+  return y;
+}
+
+function getCaptureText() {
+  if (state.currentLang === 'ar') {
+    return {
+      badgeSubtitle: '\u0643\u0627\u0645\u064a\u0631\u0627 \u0645\u0633\u062d',
+      defaultLabel: '\u062a\u0642\u0631\u064a\u0631 \u0645\u064a\u062f\u0627\u0646\u064a',
+      gpsReady: '\u0627\u0644\u0645\u0648\u0642\u0639 \u0645\u062a\u0627\u062d',
+      gpsMissing: 'GPS \u063a\u064a\u0631 \u0645\u062a\u0627\u062d',
+      fallbackTitle: '\u0627\u0644\u062a\u0642\u0627\u0637 \u0645\u064a\u062f\u0627\u0646\u064a',
+      projectLabel: '\u0627\u0644\u0645\u0634\u0631\u0648\u0639',
+      coordsLabel: '\u0627\u0644\u0625\u062d\u062f\u0627\u062b\u064a\u0627\u062a',
+      timeLabel: '\u0627\u0644\u0648\u0642\u062a',
+      noteLabel: '\u0645\u0644\u0627\u062d\u0638\u0629',
+      noteValue: '\u062a\u0645 \u0627\u0644\u062a\u0642\u0627\u0637\u0647 \u0628\u0648\u0627\u0633\u0637\u0629 Lens Light',
+      mapLabel: '\u062e\u0631\u064a\u0637\u0629 GPS',
+      noMap: '\u0644\u0627 \u064a\u0648\u062c\u062f \u0625\u062d\u062f\u0627\u062b\u064a\u0627\u062a',
+      altitudeLabel: '\u0627\u0644\u0627\u0631\u062a\u0641\u0627\u0639',
+      headingLabel: '\u0627\u0644\u0627\u062a\u062c\u0627\u0647',
+      accuracyLabel: '\u0627\u0644\u062f\u0642\u0629',
+      weatherLabel: '\u0627\u0644\u0637\u0642\u0633',
+      filterLabel: '\u0627\u0644\u0645\u0631\u0634\u062d'
+    };
+  }
+
+  return {
+    badgeSubtitle: 'Survey Camera',
+    defaultLabel: 'FIELD REPORT',
+    gpsReady: 'GPS LOCKED',
+    gpsMissing: 'GPS UNAVAILABLE',
+    fallbackTitle: 'Survey Capture',
+    projectLabel: 'Project',
+    coordsLabel: 'Coordinates',
+    timeLabel: 'Time',
+    noteLabel: 'Note',
+    noteValue: 'Captured with Lens Light',
+    mapLabel: 'GPS MAP',
+    noMap: 'No coordinates available',
+    altitudeLabel: 'Altitude',
+    headingLabel: 'Heading',
+    accuracyLabel: 'Accuracy',
+    weatherLabel: 'Weather',
+    filterLabel: 'Filter'
+  };
+}
+
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function getLocalOffsetLabel(date) {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const absoluteMinutes = Math.abs(offsetMinutes);
+  const hours = Math.floor(absoluteMinutes / 60);
+  const minutes = absoluteMinutes % 60;
+  return `GMT${sign}${pad2(hours)}:${pad2(minutes)}`;
+}
+
+function formatLocalIsoStamp(date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())} ${getLocalOffsetLabel(date)}`;
+}
+
+function formatCaptureTimestamp(date = new Date()) {
+  const format = state.settings.timestampFormat || 'iso';
+
+  switch (format) {
+    case 'us':
+      return new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      }).format(date);
+    case 'eu':
+      return new Intl.DateTimeFormat('en-GB', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(date);
+    case 'arabic':
+      return new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-arab', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(date);
+    case 'iso':
+    default:
+      return formatLocalIsoStamp(date);
+  }
+}
+
+function getCardinalDirection(heading) {
+  const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  return directions[Math.round(heading / 45) % 8];
+}
+
+function hasGpsFix() {
+  return Number.isFinite(state.currentLat) &&
+    Number.isFinite(state.currentLon) &&
+    (state.currentLat !== 0 || state.currentLon !== 0);
+}
+
+function formatHeadingValue() {
+  if (!state.orientationListenerActive || !Number.isFinite(state.currentHeading)) return '--';
+  const normalized = ((state.currentHeading % 360) + 360) % 360;
+  return `${Math.round(normalized)}\u00b0 ${getCardinalDirection(normalized)}`;
+}
+
+function formatAccuracy(accuracyMeters) {
+  if (!Number.isFinite(accuracyMeters) || accuracyMeters <= 0) {
+    return state.settings.units === 'imperial' ? '-- ft' : '-- m';
+  }
+
+  if (state.settings.units === 'imperial') {
+    return `${Math.round(accuracyMeters * 3.28084)} ft`;
+  }
+
+  return `${Math.round(accuracyMeters)} m`;
+}
+
+function buildWeatherChip(text) {
+  if (state.weatherData?.temp === null || state.weatherData?.temp === undefined) return '';
+
+  const temperature = Math.round(state.weatherData.temp);
+  const tempUnit = state.settings.units === 'imperial' ? '\u00b0F' : '\u00b0C';
+  const description = state.weatherData.description ? ` ${state.weatherData.description}` : '';
+  return `${text.weatherLabel} ${temperature}${tempUnit}${description}`;
+}
+
+function drawMetricChip(ctx, x, y, label, height, options = {}) {
+  const {
+    fill = 'rgba(255, 255, 255, 0.12)',
+    stroke = 'rgba(255, 255, 255, 0.16)',
+    textColor = 'rgba(246, 248, 251, 0.96)'
+  } = options;
+
+  const horizontalPadding = height * 0.55;
+  const chipWidth = ctx.measureText(label).width + horizontalPadding * 2;
+
+  ctx.save();
+  ctx.lineWidth = 1.2;
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = stroke;
+  traceRoundedRect(ctx, x, y, chipWidth, height, height / 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = textColor;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x + horizontalPadding, y + height / 2);
+  ctx.restore();
+
+  return chipWidth;
+}
+
+function drawMiniMapTile(ctx, x, y, size, cornerRadius, labelText) {
+  const random = createSeededRandom(state.currentLat, state.currentLon);
+
+  ctx.save();
+  traceRoundedRect(ctx, x, y, size, size, cornerRadius);
+  ctx.clip();
+
+  const background = ctx.createLinearGradient(x, y, x + size, y + size);
+  background.addColorStop(0, '#e9dfb6');
+  background.addColorStop(0.48, '#c9c198');
+  background.addColorStop(1, '#97b07b');
+  ctx.fillStyle = background;
+  ctx.fillRect(x, y, size, size);
+
+  for (let i = 0; i < 8; i += 1) {
+    const fieldX = x + random() * size * 0.82;
+    const fieldY = y + random() * size * 0.82;
+    const fieldW = size * (0.12 + random() * 0.22);
+    const fieldH = size * (0.08 + random() * 0.18);
+    const fill = random() > 0.55 ? 'rgba(91, 125, 66, 0.35)' : 'rgba(197, 185, 138, 0.42)';
+    ctx.fillStyle = fill;
+    ctx.fillRect(fieldX, fieldY, fieldW, fieldH);
+  }
+
+  ctx.strokeStyle = 'rgba(246, 239, 213, 0.88)';
+  ctx.lineCap = 'round';
+
+  for (let i = 0; i < 3; i += 1) {
+    ctx.lineWidth = size * (0.035 + random() * 0.02);
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.05, y + size * (0.12 + random() * 0.76));
+    ctx.lineTo(x + size * 1.05, y + size * (0.08 + random() * 0.82));
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(63, 92, 52, 0.16)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 10; i += 1) {
+    const rowY = y + size * (0.1 + i * 0.075);
+    ctx.beginPath();
+    ctx.moveTo(x + size * 0.08, rowY);
+    ctx.lineTo(x + size * 0.92, rowY + size * 0.04);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = 'rgba(10, 28, 48, 0.72)';
+  ctx.fillRect(x, y + size * 0.74, size, size * 0.26);
+
+  ctx.font = `700 ${Math.max(size * 0.08, 12)}px 'Segoe UI', Tahoma, sans-serif`;
+  ctx.fillStyle = 'rgba(247, 250, 255, 0.94)';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(labelText, x + size * 0.08, y + size * 0.87);
+
+  if (hasGpsFix()) {
+    const pinX = x + size * (0.22 + (Math.abs(state.currentLon * 10) % 1) * 0.56);
+    const pinY = y + size * (0.18 + (Math.abs(state.currentLat * 10) % 1) * 0.5);
+    const pinRadius = size * 0.08;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(118, 12, 16, 0.45)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 3;
+    ctx.fillStyle = '#e44747';
+    ctx.beginPath();
+    ctx.arc(pinX, pinY, pinRadius, Math.PI, 0);
+    ctx.quadraticCurveTo(pinX + pinRadius, pinY + pinRadius * 0.9, pinX, pinY + pinRadius * 2.25);
+    ctx.quadraticCurveTo(pinX - pinRadius, pinY + pinRadius * 0.9, pinX - pinRadius, pinY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+    ctx.beginPath();
+    ctx.arc(pinX, pinY, pinRadius * 0.42, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  } else {
+    ctx.font = `600 ${Math.max(size * 0.075, 11)}px 'Segoe UI', Tahoma, sans-serif`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+    ctx.textAlign = 'center';
+    ctx.fillText(getCaptureText().noMap, x + size / 2, y + size * 0.45);
+  }
+
+  ctx.restore();
+
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.38)';
+  traceRoundedRect(ctx, x, y, size, size, cornerRadius);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function addWatermarkToCanvas(ctx, width) {
+  const badgeHeight = clamp(width * 0.075, 52, 82);
+  const badgeWidth = clamp(width * 0.34, 210, 420);
+  const margin = Math.max(width * 0.03, 22);
+  const iconBox = badgeHeight - 14;
+  const text = getCaptureText();
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(5, 14, 28, 0.3)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 6;
+
+  const badgeFill = ctx.createLinearGradient(margin, margin, margin + badgeWidth, margin + badgeHeight);
+  badgeFill.addColorStop(0, 'rgba(8, 22, 40, 0.88)');
+  badgeFill.addColorStop(1, 'rgba(18, 56, 92, 0.74)');
+  fillRoundedRect(ctx, margin, margin, badgeWidth, badgeHeight, badgeHeight / 2, badgeFill);
+
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+  traceRoundedRect(ctx, margin, margin, badgeWidth, badgeHeight, badgeHeight / 2);
+  ctx.stroke();
+  ctx.restore();
 
   if (logoImg.naturalWidth > 0) {
     ctx.save();
-    // Subtle shadow for logo depth
-    ctx.shadowColor = 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 2;
-    ctx.drawImage(logoImg, padding, padding, logoSize, logoSize);
-    ctx.restore();
-
-    // Brand text with matching shadow
-    ctx.save();
-    ctx.font = `700 ${fontSize * 1.15}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    ctx.textAlign = 'left';
-    ctx.shadowColor = 'rgba(0,0,0,0.4)';
-    ctx.shadowBlur = 3;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 1;
-    ctx.fillText('LENS LIGHT', padding + logoSize + fontSize * 0.8, padding + logoSize / 2 + fontSize * 0.35);
+    ctx.drawImage(logoImg, margin + 7, margin + 7, iconBox, iconBox);
     ctx.restore();
   }
+
+  const textX = margin + iconBox + 18;
+  ctx.save();
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = 'rgba(247, 250, 255, 0.97)';
+  ctx.font = `800 ${Math.max(badgeHeight * 0.28, 18)}px 'Segoe UI', Tahoma, sans-serif`;
+  ctx.fillText('LENS LIGHT', textX, margin + badgeHeight * 0.5);
+  ctx.fillStyle = 'rgba(197, 228, 255, 0.84)';
+  ctx.font = `600 ${Math.max(badgeHeight * 0.18, 12)}px 'Segoe UI', Tahoma, sans-serif`;
+  ctx.fillText(text.badgeSubtitle, textX, margin + badgeHeight * 0.78);
+  ctx.restore();
 }
 
 function applyFilterToImageData(imageData, filter) {
@@ -404,7 +766,7 @@ function sharpenImageData(imageData, amount = 0.2) {
 }
 
 export function formatAltitude(altMeters) {
-  if (!altMeters || !Number.isFinite(altMeters)) return state.settings.units === 'imperial' ? '-- ft' : '-- m';
+  if (!Number.isFinite(altMeters)) return state.settings.units === 'imperial' ? '-- ft' : '-- m';
   if (state.settings.units === 'imperial') return `${Math.round(altMeters * 3.28084)} ft`;
   return `${Math.round(altMeters)} m`;
 }
@@ -421,8 +783,8 @@ function drawDataOverlay(ctx, canvas) {
   const y = canvas.height - panelHeight - padding * 0.8;
 
   ctx.save();
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
-  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+  ctx.fillStyle = 'rgba(0, 24, 58, 0.92)';
+  ctx.strokeStyle = 'rgba(230, 232, 235, 0.3)';
   ctx.lineWidth = 2.5;
 
   const r = 14;
@@ -442,8 +804,8 @@ function drawDataOverlay(ctx, canvas) {
 
   // Enable high-quality text rendering
   ctx.textBaseline = 'top';
-  ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
-  ctx.fillStyle = 'rgba(255,255,255,1.0)';
+  ctx.font = `600 ${fontSize}px 'SE Heartbeat', 'Segoe UI', Roboto, sans-serif`;
+  ctx.fillStyle = 'rgba(242, 243, 245, 1.0)';
   ctx.textAlign = 'left';
   
   // No shadow - crisp text on dark background
@@ -498,12 +860,12 @@ function drawCompassOverlay(ctx, canvas) {
   const r = size * 0.65;
 
   ctx.save();
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+  ctx.fillStyle = 'rgba(0, 24, 58, 0.78)';
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.strokeStyle = 'rgba(230, 232, 235, 0.9)';
   ctx.lineWidth = 3;
   ctx.stroke();
 
@@ -515,9 +877,221 @@ function drawCompassOverlay(ctx, canvas) {
   ctx.lineTo(-r * 0.12, 0);
   ctx.lineTo(r * 0.12, 0);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(239, 68, 68, 0.95)';
+  ctx.fillStyle = 'rgba(0, 255, 134, 0.95)';
   ctx.fill();
 
+  ctx.restore();
+}
+
+function drawReportOverlay(ctx, canvas) {
+  const text = getCaptureText();
+  const isRtl = state.currentLang === 'ar';
+  const margin = Math.max(canvas.width * 0.03, 22);
+  const cardWidth = canvas.width - margin * 2;
+  const cardHeight = clamp(canvas.height * 0.24, 180, canvas.height * 0.32);
+  const cardX = margin;
+  const cardY = canvas.height - cardHeight - margin;
+  const innerPadding = clamp(cardWidth * 0.028, 18, 34);
+  const mapSize = cardHeight - innerPadding * 2;
+  const gap = clamp(cardWidth * 0.02, 16, 26);
+  const mapX = isRtl ? cardX + cardWidth - innerPadding - mapSize : cardX + innerPadding;
+  const mapY = cardY + innerPadding;
+  const textStartX = isRtl ? cardX + innerPadding : mapX + mapSize + gap;
+  const textEndX = isRtl ? mapX - gap : cardX + cardWidth - innerPadding;
+  const textWidth = Math.max(80, textEndX - textStartX);
+  const textAnchorX = isRtl ? textEndX : textStartX;
+  const accentX = isRtl ? cardX + cardWidth - 8 : cardX;
+
+  const baseSize = clamp(canvas.width / 46, 15, 26);
+  const eyebrowSize = baseSize * 0.72;
+  const titleSize = baseSize * 1.36;
+  const bodySize = baseSize * 0.82;
+  const smallSize = baseSize * 0.72;
+  const titleLineHeight = titleSize * 1.08;
+  const bodyLineHeight = bodySize * 1.3;
+  const smallLineHeight = smallSize * 1.3;
+
+  const overline = state.settings.projectName
+    ? `${text.projectLabel}: ${state.settings.projectName}`
+    : (hasGpsFix() ? text.gpsReady : text.gpsMissing);
+  const titleText = state.settings.customLocation || state.settings.projectName || text.fallbackTitle;
+  const coordinatesText = hasGpsFix()
+    ? `${state.currentLat.toFixed(6)}, ${state.currentLon.toFixed(6)}`
+    : '--';
+  const timestampText = formatCaptureTimestamp(new Date());
+  const headingText = formatHeadingValue();
+  const noteText = state.featureState.currentFilter && state.featureState.currentFilter !== 'normal'
+    ? `${text.noteValue} | ${text.filterLabel}: ${String(state.featureState.currentFilter).toUpperCase()}`
+    : text.noteValue;
+
+  const chips = [
+    buildWeatherChip(text),
+    `${text.altitudeLabel} ${formatAltitude(state.currentAlt)}`,
+    `${text.headingLabel} ${headingText}`,
+    `${text.accuracyLabel} ${formatAccuracy(state.currentAccuracy)}`
+  ].filter(Boolean);
+
+  const titleLines = (() => {
+    ctx.save();
+    ctx.font = `800 ${titleSize}px 'Segoe UI', Tahoma, sans-serif`;
+    const wrapped = wrapTextIntoLines(ctx, titleText, textWidth, 2);
+    ctx.restore();
+    return wrapped;
+  })();
+
+  ctx.save();
+  const glow = ctx.createLinearGradient(0, cardY - cardHeight * 0.7, 0, canvas.height);
+  glow.addColorStop(0, 'rgba(5, 14, 24, 0)');
+  glow.addColorStop(1, 'rgba(5, 14, 24, 0.54)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, cardY - cardHeight * 0.7, canvas.width, canvas.height - cardY + cardHeight * 0.7);
+  ctx.restore();
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(4, 10, 22, 0.32)';
+  ctx.shadowBlur = 28;
+  ctx.shadowOffsetY = 8;
+  const cardFill = ctx.createLinearGradient(cardX, cardY, cardX + cardWidth, cardY + cardHeight);
+  cardFill.addColorStop(0, 'rgba(7, 20, 36, 0.88)');
+  cardFill.addColorStop(0.55, 'rgba(11, 33, 58, 0.84)');
+  cardFill.addColorStop(1, 'rgba(18, 54, 89, 0.76)');
+  fillRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 28, cardFill);
+  ctx.restore();
+
+  ctx.save();
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+  traceRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 28);
+  ctx.stroke();
+  fillRoundedRect(ctx, accentX, cardY, 8, cardHeight, 6, 'rgba(255, 186, 78, 0.96)');
+  ctx.restore();
+
+  drawMiniMapTile(ctx, mapX, mapY, mapSize, 22, text.mapLabel);
+
+  ctx.save();
+  ctx.textAlign = isRtl ? 'right' : 'left';
+  ctx.textBaseline = 'top';
+
+  let cursorY = cardY + innerPadding * 0.88;
+
+  ctx.fillStyle = 'rgba(255, 191, 103, 0.96)';
+  ctx.font = `800 ${eyebrowSize}px 'Segoe UI', Tahoma, sans-serif`;
+  ctx.fillText(overline, textAnchorX, cursorY);
+  cursorY += eyebrowSize * 1.55;
+
+  ctx.fillStyle = 'rgba(247, 250, 255, 0.98)';
+  ctx.font = `800 ${titleSize}px 'Segoe UI', Tahoma, sans-serif`;
+  cursorY = drawTextLines(ctx, titleLines, textAnchorX, cursorY, titleLineHeight);
+  cursorY += bodySize * 0.18;
+
+  ctx.fillStyle = 'rgba(212, 228, 245, 0.96)';
+  ctx.font = `600 ${bodySize}px 'Segoe UI', Tahoma, sans-serif`;
+  const coordsLines = wrapTextIntoLines(ctx, `${text.coordsLabel}: ${coordinatesText}`, textWidth, 1);
+  cursorY = drawTextLines(ctx, coordsLines, textAnchorX, cursorY, bodyLineHeight);
+  cursorY += bodySize * 0.35;
+
+  ctx.font = `700 ${smallSize}px 'Segoe UI', Tahoma, sans-serif`;
+  let chipX = isRtl ? textEndX : textStartX;
+  let chipY = cursorY;
+  const chipHeight = smallSize * 2;
+  const chipGap = smallSize * 0.6;
+
+  for (const label of chips) {
+    const widthEstimate = ctx.measureText(label).width + chipHeight * 1.1;
+    const nextEdge = isRtl ? chipX - widthEstimate : chipX + widthEstimate;
+    const exceedsRow = isRtl ? nextEdge < textStartX : nextEdge > textEndX;
+
+    if (exceedsRow) {
+      chipY += chipHeight + chipGap * 0.7;
+      chipX = isRtl ? textEndX : textStartX;
+    }
+
+    const chipDrawX = isRtl ? chipX - widthEstimate : chipX;
+    const chipWidth = drawMetricChip(ctx, chipDrawX, chipY, label, chipHeight);
+    chipX = isRtl ? chipDrawX - chipGap : chipDrawX + chipWidth + chipGap;
+  }
+
+  const footerStartY = cardY + cardHeight - innerPadding - smallLineHeight * 2.3;
+  ctx.fillStyle = 'rgba(214, 226, 241, 0.92)';
+  ctx.font = `600 ${smallSize}px 'Segoe UI', Tahoma, sans-serif`;
+  const timeLines = wrapTextIntoLines(ctx, `${text.timeLabel}: ${timestampText}`, textWidth, 1);
+  drawTextLines(ctx, timeLines, textAnchorX, footerStartY, smallLineHeight);
+
+  ctx.fillStyle = 'rgba(194, 213, 232, 0.9)';
+  const noteLines = wrapTextIntoLines(ctx, `${text.noteLabel}: ${noteText}`, textWidth, 1);
+  drawTextLines(ctx, noteLines, textAnchorX, footerStartY + smallLineHeight * 1.1, smallLineHeight);
+  ctx.restore();
+}
+
+function drawCompassBadgeOverlay(ctx, canvas) {
+  const badgeHeight = clamp(Math.min(canvas.width, canvas.height) * 0.08, 46, 70);
+  const margin = Math.max(canvas.width * 0.03, 22);
+  const headingLabel = formatHeadingValue();
+  const label = headingLabel === '--' ? 'Heading --' : headingLabel;
+
+  ctx.save();
+  ctx.font = `700 ${badgeHeight * 0.28}px 'Segoe UI', Tahoma, sans-serif`;
+  const labelWidth = ctx.measureText(label).width;
+  const badgeWidth = badgeHeight + labelWidth + badgeHeight * 1.2;
+  const x = canvas.width - margin - badgeWidth;
+  const y = margin;
+  const circleSize = badgeHeight - 12;
+  const circleX = x + 6;
+  const circleY = y + 6;
+  const circleRadius = circleSize / 2;
+
+  ctx.shadowColor = 'rgba(5, 14, 28, 0.26)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 6;
+
+  const fill = ctx.createLinearGradient(x, y, x + badgeWidth, y + badgeHeight);
+  fill.addColorStop(0, 'rgba(8, 22, 40, 0.84)');
+  fill.addColorStop(1, 'rgba(15, 47, 78, 0.72)');
+  fillRoundedRect(ctx, x, y, badgeWidth, badgeHeight, badgeHeight / 2, fill);
+
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+  traceRoundedRect(ctx, x, y, badgeWidth, badgeHeight, badgeHeight / 2);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.beginPath();
+  ctx.arc(circleX + circleRadius, circleY + circleRadius, circleRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.arc(circleX + circleRadius, circleY + circleRadius, circleRadius * 0.78, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.translate(circleX + circleRadius, circleY + circleRadius);
+  if (state.orientationListenerActive && Number.isFinite(state.currentHeading)) {
+    ctx.rotate((state.currentHeading * Math.PI) / 180);
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(0, -circleRadius * 0.64);
+  ctx.lineTo(circleRadius * 0.17, 0);
+  ctx.lineTo(-circleRadius * 0.17, 0);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255, 126, 96, 0.96)';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(0, circleRadius * 0.64);
+  ctx.lineTo(circleRadius * 0.15, 0);
+  ctx.lineTo(-circleRadius * 0.15, 0);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(120, 199, 255, 0.88)';
+  ctx.fill();
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = 'rgba(246, 249, 253, 0.96)';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = `800 ${badgeHeight * 0.28}px 'Segoe UI', Tahoma, sans-serif`;
+  ctx.fillText(label, x + circleSize + 16, y + badgeHeight / 2);
   ctx.restore();
 }
 
@@ -699,12 +1273,12 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
     ctx.putImageData(imageData, 0, 0);
   }
 
-  if (state.settings.showData) drawDataOverlay(ctx, dom.canvas);
-  if (state.settings.showCompass) drawCompassOverlay(ctx, dom.canvas);
+  if (state.settings.showData) drawReportOverlay(ctx, dom.canvas);
+  if (state.settings.showCompass) drawCompassBadgeOverlay(ctx, dom.canvas);
 
   const logoOk = await ensureLogoLoaded(800);
   if (state.settings.watermark || logoOk) {
-    addWatermarkToCanvas(ctx, dom.canvas.width, dom.canvas.height);
+    addWatermarkToCanvas(ctx, dom.canvas.width);
   }
 
   // Ensure high-quality JPEG output (minimum 0.92)

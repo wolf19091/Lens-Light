@@ -88,6 +88,7 @@ export function closePhotoViewer(dom) {
     state.viewedPhotoUrl = null;
   }
   if (dom?.photoViewerImg) dom.photoViewerImg.removeAttribute('src');
+  if (dom?.photoViewerBgImg) dom.photoViewerBgImg.removeAttribute('src');
   if (dom?.photoViewerComment) {
     dom.photoViewerComment.style.display = 'none';
     dom.photoViewerComment.textContent = '';
@@ -115,6 +116,7 @@ export async function openPhotoViewer(photoId, dom, { showStatus } = {}) {
     state.viewedPhotoId = photoId;
     state.viewedPhotoUrl = URL.createObjectURL(record.blob);
     if (dom?.photoViewerImg) dom.photoViewerImg.src = state.viewedPhotoUrl;
+    if (dom?.photoViewerBgImg) dom.photoViewerBgImg.src = state.viewedPhotoUrl;
 
     if (dom?.photoViewerComment) {
       const comment = String(record.comment || '').trim();
