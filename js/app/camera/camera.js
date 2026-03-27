@@ -1,5 +1,5 @@
 import { state } from '../state.js';
-import { sleep, clamp } from '../core/utils.js';
+import { sleep, clamp, notifyPhotosChanged } from '../core/utils.js';
 import { t } from '../core/i18n.js';
 import { dbPutPhoto } from '../storage/photoDb.js';
 
@@ -78,6 +78,67 @@ async function ensureVideoReady(video, timeoutMs = 2000) {
   });
 }
 
+function getPreferredVideoConstraints() {
+  const isLikelyMobile = /iPhone|iPad|Android/i.test(navigator.userAgent || '');
+
+  return {
+    width: { ideal: isLikelyMobile ? 4032 : 2560 },
+    height: { ideal: isLikelyMobile ? 3024 : 1440 },
+    aspectRatio: { ideal: 4 / 3 },
+    frameRate: { ideal: 30, max: 60 }
+  };
+}
+
+async function tryUpgradeTrackResolution(track) {
+  if (!track?.applyConstraints) return false;
+
+  let capabilities = {};
+  let settings = {};
+
+  try {
+    capabilities = track.getCapabilities?.() || {};
+    settings = track.getSettings?.() || {};
+  } catch {
+    return false;
+  }
+
+  const maxWidth = capabilities.width?.max;
+  const maxHeight = capabilities.height?.max;
+  if (!maxWidth || !maxHeight) return false;
+
+  const supportsFourThree = Number.isFinite(capabilities.aspectRatio?.min) &&
+    Number.isFinite(capabilities.aspectRatio?.max) &&
+    capabilities.aspectRatio.min <= 4 / 3 &&
+    capabilities.aspectRatio.max >= 4 / 3;
+
+  const targetWidth = supportsFourThree
+    ? Math.min(maxWidth, Math.round(maxHeight * (4 / 3)), 4032)
+    : Math.min(maxWidth, 3840);
+  const targetHeight = supportsFourThree
+    ? Math.min(maxHeight, Math.round(targetWidth * (3 / 4)))
+    : Math.min(maxHeight, 2160);
+
+  const currentArea = (settings.width || 0) * (settings.height || 0);
+  const targetArea = targetWidth * targetHeight;
+  if (currentArea >= targetArea * 0.9) return false;
+
+  const nextConstraints = {
+    width: { ideal: targetWidth },
+    height: { ideal: targetHeight },
+    frameRate: { ideal: 30, max: 60 }
+  };
+
+  if (supportsFourThree) nextConstraints.aspectRatio = { ideal: 4 / 3 };
+
+  try {
+    await track.applyConstraints(nextConstraints);
+    return true;
+  } catch (err) {
+    console.warn('High-resolution constraint upgrade skipped:', err);
+    return false;
+  }
+}
+
 export async function checkStorageQuota({ showStatus } = {}) {
   try {
     if (navigator.storage?.estimate) {
@@ -124,7 +185,7 @@ export async function initCamera(dom, { showStatus } = {}) {
     }
 
     const preferredFacingMode = state.settings.cameraFacingMode || 'environment';
-    const baseVideoConstraints = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+    const baseVideoConstraints = getPreferredVideoConstraints();
 
     const constraintsExact = { video: { ...baseVideoConstraints, facingMode: { exact: preferredFacingMode } } };
     const constraintsIdeal = { video: { ...baseVideoConstraints, facingMode: { ideal: preferredFacingMode } } };
@@ -162,15 +223,18 @@ export async function initCamera(dom, { showStatus } = {}) {
 
     state.videoStream = stream;
     if (dom?.video) dom.video.srcObject = state.videoStream;
+
+    const track = stream?.getVideoTracks?.()?.[0];
+    const upgradedResolution = await tryUpgradeTrackResolution(track);
     localStorage.setItem('camera_granted', 'true');
 
     const ready = await ensureVideoReady(dom?.video);
     
     if (localStorage.getItem('debug_mode') === 'true') {
-      const track = stream?.getVideoTracks?.()?.[0];
       const settings = track?.getSettings?.() || {};
       console.log('📷 Camera initialized:', {
         constraintUsed,
+        upgradedResolution,
         ready,
         videoWidth: dom?.video?.videoWidth,
         videoHeight: dom?.video?.videoHeight,
@@ -347,46 +411,51 @@ function createSeededRandom(seedA = 0, seedB = 0) {
 function wrapTextIntoLines(ctx, text, maxWidth, maxLines = 2) {
   const value = String(text || '').trim();
   if (!value) return [];
-
+  const safeMaxWidth = Math.max(1, maxWidth || 0);
+  const safeMaxLines = Math.max(1, Math.floor(maxLines || 1));
   const words = value.split(/\s+/);
   const lines = [];
-  let currentLine = '';
 
-  for (const word of words) {
-    const trial = currentLine ? `${currentLine} ${word}` : word;
-    if (ctx.measureText(trial).width <= maxWidth || !currentLine) {
+  const fitSingleLine = (line) => {
+    let output = String(line || '').trim();
+    if (!output) return '';
+    if (ctx.measureText(output).width <= safeMaxWidth) return output;
+
+    while (output.length > 1 && ctx.measureText(`${output}...`).width > safeMaxWidth) {
+      output = output.slice(0, -1).trimEnd();
+    }
+
+    return output ? `${output}...` : '';
+  };
+
+  if (safeMaxLines === 1) {
+    const line = fitSingleLine(value);
+    return line ? [line] : [];
+  }
+
+  let wordIndex = 0;
+
+  while (wordIndex < words.length && lines.length < safeMaxLines) {
+    let currentLine = words[wordIndex];
+    wordIndex += 1;
+
+    while (wordIndex < words.length) {
+      const trial = `${currentLine} ${words[wordIndex]}`;
+      if (ctx.measureText(trial).width > safeMaxWidth) break;
       currentLine = trial;
-      continue;
+      wordIndex += 1;
+    }
+
+    if (lines.length === safeMaxLines - 1 && wordIndex < words.length) {
+      const finalLine = fitSingleLine(`${currentLine} ${words.slice(wordIndex).join(' ')}`);
+      if (finalLine) lines.push(finalLine);
+      return lines;
     }
 
     lines.push(currentLine);
-    currentLine = word;
-
-    if (lines.length === maxLines - 1) break;
   }
 
-  if (currentLine) {
-    let finalLine = currentLine;
-    const usedWords = lines.join(' ').split(/\s+/).filter(Boolean).length;
-    const hasOverflow = usedWords < words.length;
-
-    if (hasOverflow) {
-      const remaining = words.slice(usedWords).join(' ');
-      finalLine = finalLine ? `${finalLine} ${remaining}` : remaining;
-    }
-
-    while (ctx.measureText(`${finalLine}...`).width > maxWidth && finalLine.length > 1) {
-      finalLine = finalLine.slice(0, -1).trimEnd();
-    }
-
-    if (hasOverflow && finalLine) {
-      finalLine = `${finalLine}...`;
-    }
-
-    lines.push(finalLine);
-  }
-
-  return lines.slice(0, maxLines);
+  return lines.slice(0, safeMaxLines);
 }
 
 function drawTextLines(ctx, lines, x, startY, lineHeight) {
@@ -413,6 +482,9 @@ function getCaptureText() {
       noteValue: '\u062a\u0645 \u0627\u0644\u062a\u0642\u0627\u0637\u0647 \u0628\u0648\u0627\u0633\u0637\u0629 Lens Light',
       mapLabel: '\u062e\u0631\u064a\u0637\u0629 GPS',
       noMap: '\u0644\u0627 \u064a\u0648\u062c\u062f \u0625\u062d\u062f\u0627\u062b\u064a\u0627\u062a',
+      latLabel: '\u062e\u0637 \u0627\u0644\u0639\u0631\u0636',
+      longLabel: '\u062e\u0637 \u0627\u0644\u0637\u0648\u0644',
+      brandLabel: 'Lens Light',
       altitudeLabel: '\u0627\u0644\u0627\u0631\u062a\u0641\u0627\u0639',
       headingLabel: '\u0627\u0644\u0627\u062a\u062c\u0627\u0647',
       accuracyLabel: '\u0627\u0644\u062f\u0642\u0629',
@@ -434,6 +506,9 @@ function getCaptureText() {
     noteValue: 'Captured with Lens Light',
     mapLabel: 'GPS MAP',
     noMap: 'No coordinates available',
+    latLabel: 'Lat',
+    longLabel: 'Long',
+    brandLabel: 'Lens Light',
     altitudeLabel: 'Altitude',
     headingLabel: 'Heading',
     accuracyLabel: 'Accuracy',
@@ -499,6 +574,60 @@ function formatCaptureTimestamp(date = new Date()) {
   }
 }
 
+function stripDirectionMarks(value) {
+  return String(value || '').replace(/[\u200e\u200f]/g, '').trim();
+}
+
+function formatOverlayTimestamp(date = new Date()) {
+  const locale = state.currentLang === 'ar'
+    ? 'ar-SA-u-ca-gregory-nu-arab'
+    : 'en-US';
+  const weekday = new Intl.DateTimeFormat(locale, { weekday: 'long' }).format(date);
+  const datePart = state.currentLang === 'ar'
+    ? stripDirectionMarks(new Intl.DateTimeFormat(locale, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }).format(date))
+    : `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()}`;
+  const rawTime = stripDirectionMarks(new Intl.DateTimeFormat(locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  }).format(date));
+  const timePart = state.currentLang === 'ar' ? rawTime : rawTime.toUpperCase();
+  return `${weekday}, ${datePart} ${timePart} ${getLocalOffsetLabel(date)}`;
+}
+
+function getOverlayLocationCopy(text) {
+  const rawLocation = String(state.settings.customLocation || '').trim();
+  const projectName = String(state.settings.projectName || '').trim();
+
+  if (!rawLocation) {
+    return {
+      title: projectName || text.fallbackTitle,
+      address: projectName && projectName !== text.fallbackTitle
+        ? `${text.projectLabel}: ${projectName}`
+        : ''
+    };
+  }
+
+  const parts = rawLocation
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const title = parts.length >= 4
+    ? parts.slice(-3).join(', ')
+    : rawLocation;
+  let address = parts.length >= 4 ? parts.join(', ') : '';
+
+  if (!address && projectName && projectName !== title) {
+    address = `${text.projectLabel}: ${projectName}`;
+  }
+
+  return { title, address };
+}
+
 function getCardinalDirection(heading) {
   const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   return directions[Math.round(heading / 45) % 8];
@@ -537,6 +666,27 @@ function buildWeatherChip(text) {
   return `${text.weatherLabel} ${temperature}${tempUnit}${description}`;
 }
 
+function buildOverlayFooterText(text) {
+  const parts = [];
+  const accuracyText = Number.isFinite(state.currentAccuracy) && state.currentAccuracy > 0
+    ? `${text.accuracyLabel}: ${formatAccuracy(state.currentAccuracy)}`
+    : '';
+  const altitudeText = Number.isFinite(state.currentAlt)
+    ? `${text.altitudeLabel}: ${formatAltitude(state.currentAlt)}`
+    : '';
+  const weatherText = buildWeatherChip(text);
+  const filterText = state.featureState.currentFilter && state.featureState.currentFilter !== 'normal'
+    ? `${text.filterLabel}: ${String(state.featureState.currentFilter).toUpperCase()}`
+    : '';
+
+  if (accuracyText) parts.push(accuracyText);
+  if (!altitudeText.endsWith('-- m') && !altitudeText.endsWith('-- ft')) parts.push(altitudeText);
+  if (weatherText) parts.push(weatherText);
+  if (filterText) parts.push(filterText);
+
+  return parts.length > 0 ? parts.join(' • ') : `${text.noteLabel}: ${text.noteValue}`;
+}
+
 function drawMetricChip(ctx, x, y, label, height, options = {}) {
   const {
     fill = 'rgba(255, 255, 255, 0.12)',
@@ -563,7 +713,7 @@ function drawMetricChip(ctx, x, y, label, height, options = {}) {
   return chipWidth;
 }
 
-function drawMiniMapTile(ctx, x, y, size, cornerRadius, labelText) {
+function drawMiniMapTile(ctx, x, y, size, cornerRadius) {
   const random = createSeededRandom(state.currentLat, state.currentLon);
 
   ctx.save();
@@ -571,62 +721,76 @@ function drawMiniMapTile(ctx, x, y, size, cornerRadius, labelText) {
   ctx.clip();
 
   const background = ctx.createLinearGradient(x, y, x + size, y + size);
-  background.addColorStop(0, '#e9dfb6');
-  background.addColorStop(0.48, '#c9c198');
-  background.addColorStop(1, '#97b07b');
+  background.addColorStop(0, '#ccb98e');
+  background.addColorStop(0.38, '#b7aa7f');
+  background.addColorStop(0.72, '#8ca57a');
+  background.addColorStop(1, '#5e7f68');
   ctx.fillStyle = background;
   ctx.fillRect(x, y, size, size);
 
-  for (let i = 0; i < 8; i += 1) {
-    const fieldX = x + random() * size * 0.82;
-    const fieldY = y + random() * size * 0.82;
-    const fieldW = size * (0.12 + random() * 0.22);
-    const fieldH = size * (0.08 + random() * 0.18);
-    const fill = random() > 0.55 ? 'rgba(91, 125, 66, 0.35)' : 'rgba(197, 185, 138, 0.42)';
+  for (let i = 0; i < 16; i += 1) {
+    const fieldX = x + random() * size * 0.86;
+    const fieldY = y + random() * size * 0.86;
+    const fieldW = size * (0.08 + random() * 0.22);
+    const fieldH = size * (0.08 + random() * 0.2);
+    const fillPalette = [
+      'rgba(132, 152, 106, 0.34)',
+      'rgba(109, 126, 91, 0.32)',
+      'rgba(199, 178, 124, 0.28)',
+      'rgba(157, 138, 102, 0.24)'
+    ];
+    const fill = fillPalette[Math.floor(random() * fillPalette.length)];
     ctx.fillStyle = fill;
     ctx.fillRect(fieldX, fieldY, fieldW, fieldH);
   }
 
-  ctx.strokeStyle = 'rgba(246, 239, 213, 0.88)';
+  ctx.strokeStyle = 'rgba(224, 214, 186, 0.84)';
   ctx.lineCap = 'round';
 
-  for (let i = 0; i < 3; i += 1) {
-    ctx.lineWidth = size * (0.035 + random() * 0.02);
+  for (let i = 0; i < 4; i += 1) {
+    ctx.lineWidth = size * (0.026 + random() * 0.018);
     ctx.beginPath();
-    ctx.moveTo(x - size * 0.05, y + size * (0.12 + random() * 0.76));
-    ctx.lineTo(x + size * 1.05, y + size * (0.08 + random() * 0.82));
+    ctx.moveTo(x - size * 0.08, y + size * (0.12 + random() * 0.78));
+    ctx.lineTo(x + size * 1.08, y + size * (0.12 + random() * 0.76));
     ctx.stroke();
   }
 
-  ctx.strokeStyle = 'rgba(63, 92, 52, 0.16)';
+  ctx.strokeStyle = 'rgba(62, 79, 95, 0.2)';
+  for (let i = 0; i < 6; i += 1) {
+    ctx.lineWidth = size * (0.012 + random() * 0.008);
+    ctx.beginPath();
+    ctx.moveTo(x + size * (0.1 + random() * 0.22), y - size * 0.05);
+    ctx.lineTo(x + size * (0.78 + random() * 0.18), y + size * 1.05);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
   ctx.lineWidth = 1;
   for (let i = 0; i < 10; i += 1) {
-    const rowY = y + size * (0.1 + i * 0.075);
+    const rowY = y + size * (0.08 + i * 0.085);
     ctx.beginPath();
     ctx.moveTo(x + size * 0.08, rowY);
-    ctx.lineTo(x + size * 0.92, rowY + size * 0.04);
+    ctx.lineTo(x + size * 0.92, rowY + size * (0.03 + random() * 0.03));
     ctx.stroke();
   }
 
-  ctx.fillStyle = 'rgba(10, 28, 48, 0.72)';
-  ctx.fillRect(x, y + size * 0.74, size, size * 0.26);
-
-  ctx.font = `700 ${Math.max(size * 0.08, 12)}px 'Segoe UI', Tahoma, sans-serif`;
-  ctx.fillStyle = 'rgba(247, 250, 255, 0.94)';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(labelText, x + size * 0.08, y + size * 0.87);
+  const gloss = ctx.createLinearGradient(x, y, x, y + size);
+  gloss.addColorStop(0, 'rgba(255, 255, 255, 0.14)');
+  gloss.addColorStop(0.4, 'rgba(255, 255, 255, 0)');
+  gloss.addColorStop(1, 'rgba(0, 0, 0, 0.16)');
+  ctx.fillStyle = gloss;
+  ctx.fillRect(x, y, size, size);
 
   if (hasGpsFix()) {
-    const pinX = x + size * (0.22 + (Math.abs(state.currentLon * 10) % 1) * 0.56);
+    const pinX = x + size * (0.2 + (Math.abs(state.currentLon * 10) % 1) * 0.58);
     const pinY = y + size * (0.18 + (Math.abs(state.currentLat * 10) % 1) * 0.5);
-    const pinRadius = size * 0.08;
+    const pinRadius = size * 0.085;
 
     ctx.save();
-    ctx.shadowColor = 'rgba(118, 12, 16, 0.45)';
-    ctx.shadowBlur = 10;
+    ctx.shadowColor = 'rgba(97, 12, 18, 0.42)';
+    ctx.shadowBlur = 12;
     ctx.shadowOffsetY = 3;
-    ctx.fillStyle = '#e44747';
+    ctx.fillStyle = '#ed4d4d';
     ctx.beginPath();
     ctx.arc(pinX, pinY, pinRadius, Math.PI, 0);
     ctx.quadraticCurveTo(pinX + pinRadius, pinY + pinRadius * 0.9, pinX, pinY + pinRadius * 2.25);
@@ -649,9 +813,78 @@ function drawMiniMapTile(ctx, x, y, size, cornerRadius, labelText) {
 
   ctx.save();
   ctx.lineWidth = 2;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.38)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.46)';
   traceRoundedRect(ctx, x, y, size, size, cornerRadius);
   ctx.stroke();
+  ctx.restore();
+}
+
+function drawOverlayBrandBadge(ctx, x, y, width, height, label, isRtl, logoOk) {
+  ctx.save();
+  const fill = ctx.createLinearGradient(x, y, x + width, y + height);
+  fill.addColorStop(0, 'rgba(18, 48, 77, 0.92)');
+  fill.addColorStop(1, 'rgba(6, 18, 31, 0.82)');
+  fillRoundedRect(ctx, x, y, width, height, height / 2, fill);
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+  traceRoundedRect(ctx, x, y, width, height, height / 2);
+  ctx.stroke();
+
+  const iconSize = logoOk && logoImg.naturalWidth > 0
+    ? height - 8
+    : height * 0.38;
+  const sidePadding = height * 0.38;
+  const gap = height * 0.22;
+  const iconY = y + (height - iconSize) / 2;
+
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(246, 249, 253, 0.96)';
+  ctx.font = `700 ${Math.max(height * 0.4, 11)}px 'Segoe UI', Tahoma, sans-serif`;
+
+  if (isRtl) {
+    let cursorX = x + width - sidePadding;
+    if (logoOk && logoImg.naturalWidth > 0) {
+      const iconX = cursorX - iconSize;
+      ctx.drawImage(logoImg, iconX, iconY, iconSize, iconSize);
+      cursorX = iconX - gap;
+    } else {
+      fillRoundedRect(
+        ctx,
+        cursorX - iconSize,
+        y + (height - iconSize) / 2,
+        iconSize,
+        iconSize,
+        iconSize * 0.28,
+        'rgba(255, 196, 92, 0.9)'
+      );
+      cursorX -= iconSize + gap;
+    }
+
+    ctx.textAlign = 'right';
+    ctx.fillText(label, cursorX, y + height / 2);
+  } else {
+    let cursorX = x + sidePadding;
+    if (logoOk && logoImg.naturalWidth > 0) {
+      ctx.drawImage(logoImg, cursorX, iconY, iconSize, iconSize);
+      cursorX += iconSize + gap;
+    } else {
+      fillRoundedRect(
+        ctx,
+        cursorX,
+        y + (height - iconSize) / 2,
+        iconSize,
+        iconSize,
+        iconSize * 0.28,
+        'rgba(255, 196, 92, 0.9)'
+      );
+      cursorX += iconSize + gap;
+    }
+
+    ctx.textAlign = 'left';
+    ctx.fillText(label, cursorX, y + height / 2);
+  }
+
   ctx.restore();
 }
 
@@ -883,148 +1116,182 @@ function drawCompassOverlay(ctx, canvas) {
   ctx.restore();
 }
 
-function drawReportOverlay(ctx, canvas) {
+function drawReportOverlay(ctx, canvas, logoOk = false) {
   const text = getCaptureText();
   const isRtl = state.currentLang === 'ar';
-  const margin = Math.max(canvas.width * 0.03, 22);
+  const portraitWeight = canvas.height / Math.max(canvas.width, 1);
+  const compactMode = portraitWeight > 1.45;
+  const margin = clamp(canvas.width * 0.018, 12, 28);
   const cardWidth = canvas.width - margin * 2;
-  const cardHeight = clamp(canvas.height * 0.24, 180, canvas.height * 0.32);
+  const innerPadding = clamp(canvas.width * (compactMode ? 0.024 : 0.02), 14, 24);
+  const mapSize = clamp(
+    Math.min(canvas.width * (compactMode ? 0.13 : 0.155), canvas.height * 0.14),
+    compactMode ? 78 : 92,
+    compactMode ? 118 : 144
+  );
+  const gap = clamp(cardWidth * 0.018, 12, 22);
   const cardX = margin;
-  const cardY = canvas.height - cardHeight - margin;
-  const innerPadding = clamp(cardWidth * 0.028, 18, 34);
-  const mapSize = cardHeight - innerPadding * 2;
-  const gap = clamp(cardWidth * 0.02, 16, 26);
   const mapX = isRtl ? cardX + cardWidth - innerPadding - mapSize : cardX + innerPadding;
-  const mapY = cardY + innerPadding;
-  const textStartX = isRtl ? cardX + innerPadding : mapX + mapSize + gap;
-  const textEndX = isRtl ? mapX - gap : cardX + cardWidth - innerPadding;
-  const textWidth = Math.max(80, textEndX - textStartX);
-  const textAnchorX = isRtl ? textEndX : textStartX;
-  const accentX = isRtl ? cardX + cardWidth - 8 : cardX;
+  const textLeft = isRtl ? cardX + innerPadding : mapX + mapSize + gap;
+  const textRight = isRtl ? mapX - gap : cardX + cardWidth - innerPadding;
+  const textWidth = Math.max(96, textRight - textLeft);
+  const textAnchorX = isRtl ? textRight : textLeft;
 
-  const baseSize = clamp(canvas.width / 46, 15, 26);
-  const eyebrowSize = baseSize * 0.72;
-  const titleSize = baseSize * 1.36;
-  const bodySize = baseSize * 0.82;
-  const smallSize = baseSize * 0.72;
+  const titleSize = clamp(canvas.width * (compactMode ? 0.042 : 0.038), 18, 34);
+  const bodySize = clamp(canvas.width * 0.022, 12.5, 18);
+  const noteSize = clamp(canvas.width * 0.019, 11.5, 15.5);
   const titleLineHeight = titleSize * 1.08;
-  const bodyLineHeight = bodySize * 1.3;
-  const smallLineHeight = smallSize * 1.3;
-
-  const overline = state.settings.projectName
-    ? `${text.projectLabel}: ${state.settings.projectName}`
-    : (hasGpsFix() ? text.gpsReady : text.gpsMissing);
-  const titleText = state.settings.customLocation || state.settings.projectName || text.fallbackTitle;
+  const bodyLineHeight = bodySize * 1.28;
+  const noteLineHeight = noteSize * 1.24;
+  const timestampText = formatOverlayTimestamp(new Date());
+  const { title, address } = getOverlayLocationCopy(text);
   const coordinatesText = hasGpsFix()
-    ? `${state.currentLat.toFixed(6)}, ${state.currentLon.toFixed(6)}`
-    : '--';
-  const timestampText = formatCaptureTimestamp(new Date());
-  const headingText = formatHeadingValue();
-  const noteText = state.featureState.currentFilter && state.featureState.currentFilter !== 'normal'
-    ? `${text.noteValue} | ${text.filterLabel}: ${String(state.featureState.currentFilter).toUpperCase()}`
-    : text.noteValue;
+    ? `${text.latLabel} ${state.currentLat.toFixed(6)}, ${text.longLabel} ${state.currentLon.toFixed(6)}`
+    : text.noMap;
+  const footerText = buildOverlayFooterText(text);
 
-  const chips = [
-    buildWeatherChip(text),
-    `${text.altitudeLabel} ${formatAltitude(state.currentAlt)}`,
-    `${text.headingLabel} ${headingText}`,
-    `${text.accuracyLabel} ${formatAccuracy(state.currentAccuracy)}`
-  ].filter(Boolean);
+  ctx.save();
+  ctx.font = `700 ${Math.max(bodySize * 0.98, 12)}px 'Segoe UI', Tahoma, sans-serif`;
+  const brandIconSize = logoOk && logoImg.naturalWidth > 0
+    ? Math.max(bodySize * 1.65, 18)
+    : Math.max(bodySize * 0.8, 12);
+  const brandBadgeHeight = Math.max(bodySize * 1.75, 22);
+  const brandBadgeWidth = Math.min(
+    textWidth * (compactMode ? 0.4 : 0.48),
+    Math.max(ctx.measureText(text.brandLabel).width + brandIconSize + brandBadgeHeight, compactMode ? 92 : 104)
+  );
+  ctx.restore();
 
+  const titleWidth = Math.max(108, textWidth - brandBadgeWidth - gap * 0.6);
   const titleLines = (() => {
     ctx.save();
     ctx.font = `800 ${titleSize}px 'Segoe UI', Tahoma, sans-serif`;
-    const wrapped = wrapTextIntoLines(ctx, titleText, textWidth, 2);
+    const wrapped = wrapTextIntoLines(ctx, title, titleWidth, compactMode ? 1 : 2);
+    ctx.restore();
+    return wrapped;
+  })();
+  const addressLines = (() => {
+    if (!address) return [];
+    ctx.save();
+    ctx.font = `600 ${bodySize}px 'Segoe UI', Tahoma, sans-serif`;
+    const wrapped = wrapTextIntoLines(ctx, address, textWidth, compactMode ? 1 : 2);
+    ctx.restore();
+    return wrapped;
+  })();
+  const coordsLines = (() => {
+    ctx.save();
+    ctx.font = `600 ${bodySize}px 'Segoe UI', Tahoma, sans-serif`;
+    const wrapped = wrapTextIntoLines(ctx, coordinatesText, textWidth, 1);
+    ctx.restore();
+    return wrapped;
+  })();
+  const timeLines = (() => {
+    ctx.save();
+    ctx.font = `600 ${noteSize}px 'Segoe UI', Tahoma, sans-serif`;
+    const wrapped = wrapTextIntoLines(ctx, timestampText, textWidth, 1);
+    ctx.restore();
+    return wrapped;
+  })();
+  const footerLines = (() => {
+    ctx.save();
+    ctx.font = `600 ${noteSize}px 'Segoe UI', Tahoma, sans-serif`;
+    const wrapped = wrapTextIntoLines(ctx, footerText, textWidth, compactMode ? 1 : 2);
     ctx.restore();
     return wrapped;
   })();
 
+  let textContentHeight = Math.max(brandBadgeHeight, titleLines.length * titleLineHeight);
+  if (addressLines.length > 0) textContentHeight += bodySize * 0.35 + addressLines.length * bodyLineHeight;
+  if (coordsLines.length > 0) textContentHeight += bodySize * 0.22 + coordsLines.length * bodyLineHeight;
+  if (timeLines.length > 0) textContentHeight += noteSize * 0.24 + timeLines.length * noteLineHeight;
+  if (footerLines.length > 0) textContentHeight += noteSize * 0.24 + footerLines.length * noteLineHeight;
+
+  const cardHeight = clamp(
+    innerPadding * 2 + Math.max(mapSize, textContentHeight),
+    compactMode ? 124 : 142,
+    compactMode ? canvas.height * 0.205 : canvas.height * 0.24
+  );
+  const cardY = canvas.height - cardHeight - margin;
+  const mapY = cardY + (cardHeight - mapSize) / 2;
+
   ctx.save();
-  const glow = ctx.createLinearGradient(0, cardY - cardHeight * 0.7, 0, canvas.height);
-  glow.addColorStop(0, 'rgba(5, 14, 24, 0)');
-  glow.addColorStop(1, 'rgba(5, 14, 24, 0.54)');
+  const glow = ctx.createLinearGradient(0, cardY - cardHeight * 0.55, 0, canvas.height);
+  glow.addColorStop(0, 'rgba(5, 10, 18, 0)');
+  glow.addColorStop(1, 'rgba(5, 10, 18, 0.34)');
   ctx.fillStyle = glow;
-  ctx.fillRect(0, cardY - cardHeight * 0.7, canvas.width, canvas.height - cardY + cardHeight * 0.7);
+  ctx.fillRect(0, cardY - cardHeight * 0.55, canvas.width, canvas.height - cardY + cardHeight * 0.55);
   ctx.restore();
 
   ctx.save();
-  ctx.shadowColor = 'rgba(4, 10, 22, 0.32)';
-  ctx.shadowBlur = 28;
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.28)';
+  ctx.shadowBlur = 24;
   ctx.shadowOffsetY = 8;
   const cardFill = ctx.createLinearGradient(cardX, cardY, cardX + cardWidth, cardY + cardHeight);
-  cardFill.addColorStop(0, 'rgba(7, 20, 36, 0.88)');
-  cardFill.addColorStop(0.55, 'rgba(11, 33, 58, 0.84)');
-  cardFill.addColorStop(1, 'rgba(18, 54, 89, 0.76)');
-  fillRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 28, cardFill);
+  cardFill.addColorStop(0, 'rgba(10, 14, 21, 0.86)');
+  cardFill.addColorStop(0.62, 'rgba(15, 22, 31, 0.8)');
+  cardFill.addColorStop(1, 'rgba(21, 30, 42, 0.74)');
+  fillRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 24, cardFill);
   ctx.restore();
 
   ctx.save();
-  ctx.lineWidth = 1.4;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
-  traceRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 28);
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+  traceRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 24);
   ctx.stroke();
-  fillRoundedRect(ctx, accentX, cardY, 8, cardHeight, 6, 'rgba(255, 186, 78, 0.96)');
   ctx.restore();
 
-  drawMiniMapTile(ctx, mapX, mapY, mapSize, 22, text.mapLabel);
+  drawMiniMapTile(ctx, mapX, mapY, mapSize, 18);
+
+  const brandBadgeX = isRtl ? textLeft : textRight - brandBadgeWidth;
+  const brandBadgeY = cardY + innerPadding;
+  drawOverlayBrandBadge(
+    ctx,
+    brandBadgeX,
+    brandBadgeY,
+    brandBadgeWidth,
+    brandBadgeHeight,
+    text.brandLabel,
+    isRtl,
+    logoOk
+  );
 
   ctx.save();
   ctx.textAlign = isRtl ? 'right' : 'left';
   ctx.textBaseline = 'top';
 
-  let cursorY = cardY + innerPadding * 0.88;
-
-  ctx.fillStyle = 'rgba(255, 191, 103, 0.96)';
-  ctx.font = `800 ${eyebrowSize}px 'Segoe UI', Tahoma, sans-serif`;
-  ctx.fillText(overline, textAnchorX, cursorY);
-  cursorY += eyebrowSize * 1.55;
+  const contentTopY = cardY + innerPadding;
+  const titleBlockHeight = Math.max(brandBadgeHeight, titleLines.length * titleLineHeight);
+  let cursorY = contentTopY + Math.max(0, (brandBadgeHeight - titleLineHeight) * 0.2);
 
   ctx.fillStyle = 'rgba(247, 250, 255, 0.98)';
   ctx.font = `800 ${titleSize}px 'Segoe UI', Tahoma, sans-serif`;
   cursorY = drawTextLines(ctx, titleLines, textAnchorX, cursorY, titleLineHeight);
-  cursorY += bodySize * 0.18;
+  cursorY = contentTopY + titleBlockHeight;
 
-  ctx.fillStyle = 'rgba(212, 228, 245, 0.96)';
+  ctx.fillStyle = 'rgba(232, 237, 243, 0.95)';
   ctx.font = `600 ${bodySize}px 'Segoe UI', Tahoma, sans-serif`;
-  const coordsLines = wrapTextIntoLines(ctx, `${text.coordsLabel}: ${coordinatesText}`, textWidth, 1);
-  cursorY = drawTextLines(ctx, coordsLines, textAnchorX, cursorY, bodyLineHeight);
-  cursorY += bodySize * 0.35;
-
-  ctx.font = `700 ${smallSize}px 'Segoe UI', Tahoma, sans-serif`;
-  let chipX = isRtl ? textEndX : textStartX;
-  let chipY = cursorY;
-  const chipHeight = smallSize * 2;
-  const chipGap = smallSize * 0.6;
-
-  for (const label of chips) {
-    const widthEstimate = ctx.measureText(label).width + chipHeight * 1.1;
-    const nextEdge = isRtl ? chipX - widthEstimate : chipX + widthEstimate;
-    const exceedsRow = isRtl ? nextEdge < textStartX : nextEdge > textEndX;
-
-    if (exceedsRow) {
-      chipY += chipHeight + chipGap * 0.7;
-      chipX = isRtl ? textEndX : textStartX;
-    }
-
-    const chipDrawX = isRtl ? chipX - widthEstimate : chipX;
-    const chipWidth = drawMetricChip(ctx, chipDrawX, chipY, label, chipHeight);
-    chipX = isRtl ? chipDrawX - chipGap : chipDrawX + chipWidth + chipGap;
+  if (addressLines.length > 0) {
+    cursorY += bodySize * 0.35;
+    cursorY = drawTextLines(ctx, addressLines, textAnchorX, cursorY, bodyLineHeight);
   }
 
-  const footerStartY = cardY + cardHeight - innerPadding - smallLineHeight * 2.3;
-  ctx.fillStyle = 'rgba(214, 226, 241, 0.92)';
-  ctx.font = `600 ${smallSize}px 'Segoe UI', Tahoma, sans-serif`;
-  const timeLines = wrapTextIntoLines(ctx, `${text.timeLabel}: ${timestampText}`, textWidth, 1);
-  drawTextLines(ctx, timeLines, textAnchorX, footerStartY, smallLineHeight);
+  cursorY += bodySize * 0.22;
+  cursorY = drawTextLines(ctx, coordsLines, textAnchorX, cursorY, bodyLineHeight);
 
-  ctx.fillStyle = 'rgba(194, 213, 232, 0.9)';
-  const noteLines = wrapTextIntoLines(ctx, `${text.noteLabel}: ${noteText}`, textWidth, 1);
-  drawTextLines(ctx, noteLines, textAnchorX, footerStartY + smallLineHeight * 1.1, smallLineHeight);
+  ctx.fillStyle = 'rgba(221, 228, 235, 0.9)';
+  ctx.font = `600 ${noteSize}px 'Segoe UI', Tahoma, sans-serif`;
+  cursorY += noteSize * 0.24;
+  cursorY = drawTextLines(ctx, timeLines, textAnchorX, cursorY, noteLineHeight);
+
+  ctx.fillStyle = 'rgba(205, 214, 223, 0.9)';
+  cursorY += noteSize * 0.24;
+  drawTextLines(ctx, footerLines, textAnchorX, cursorY, noteLineHeight);
   ctx.restore();
 }
 
 function drawCompassBadgeOverlay(ctx, canvas) {
-  const badgeHeight = clamp(Math.min(canvas.width, canvas.height) * 0.08, 46, 70);
+  const portraitTightness = canvas.height > canvas.width ? 0.92 : 1;
+  const badgeHeight = clamp(Math.min(canvas.width, canvas.height) * 0.08 * portraitTightness, 44, 68);
   const margin = Math.max(canvas.width * 0.03, 22);
   const headingLabel = formatHeadingValue();
   const label = headingLabel === '--' ? 'Heading --' : headingLabel;
@@ -1158,9 +1425,10 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
   const vw = dom.video.videoWidth;
   const vh = dom.video.videoHeight;
   
-  // Get viewport aspect ratio (what user sees due to object-fit: cover)
-  const viewportWidth = dom.video.clientWidth || window.innerWidth;
-  const viewportHeight = dom.video.clientHeight || window.innerHeight;
+  // Get the rendered preview size so the exported crop matches what the user saw.
+  const previewRect = dom.video.getBoundingClientRect();
+  const viewportWidth = previewRect.width || dom.video.clientWidth || window.innerWidth;
+  const viewportHeight = previewRect.height || dom.video.clientHeight || window.innerHeight;
   const viewportRatio = viewportWidth / viewportHeight;
   const videoRatio = vw / vh;
   const zoom = state.zoomLevel || 1.0;
@@ -1191,23 +1459,21 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
   const sx = offsetX + (visibleWidth - zoomedWidth) / 2;
   const sy = offsetY + (visibleHeight - zoomedHeight) / 2;
 
-  // Set output canvas to match the aspect ratio of viewport
-  // Use the actual video resolution as base, clamped to reasonable max
-  const maxDimension = 2400; // Max 2400px on long edge for quality/filesize balance
-  let outputWidth, outputHeight;
-  
-  if (viewportRatio > 1) {
-    // Landscape
-    outputWidth = Math.min(maxDimension, zoomedWidth);
-    outputHeight = outputWidth / viewportRatio;
-  } else {
-    // Portrait or square
-    outputHeight = Math.min(maxDimension, zoomedHeight);
-    outputWidth = outputHeight * viewportRatio;
-  }
-  
-  dom.canvas.width = Math.round(outputWidth);
-  dom.canvas.height = Math.round(outputHeight);
+  // Match the preview crop, but avoid aggressively upscaling soft portrait crops.
+  // High-end phones now request a larger native stream, so this can stay conservative.
+  const isPortraitCapture = zoomedHeight >= zoomedWidth;
+  const maxDimension = isPortraitCapture ? 3200 : 2800;
+  const maxUpscale = isPortraitCapture ? 1.4 : 1.25;
+  const sourceLongEdge = Math.max(zoomedWidth, zoomedHeight, 1);
+  const targetLongEdge = sourceLongEdge >= maxDimension
+    ? maxDimension
+    : Math.min(maxDimension, Math.round(sourceLongEdge * maxUpscale));
+  const exportScale = targetLongEdge / sourceLongEdge;
+  const outputWidth = Math.max(1, Math.round(zoomedWidth * exportScale));
+  const outputHeight = Math.max(1, Math.round(zoomedHeight * exportScale));
+
+  dom.canvas.width = outputWidth;
+  dom.canvas.height = outputHeight;
   
   if (localStorage.getItem('debug_mode') === 'true') {
     console.log('📸 Capture:', {
@@ -1216,15 +1482,14 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
       visible: `${visibleWidth.toFixed(0)}x${visibleHeight.toFixed(0)}`,
       crop: `${zoomedWidth.toFixed(0)}x${zoomedHeight.toFixed(0)} at (${sx.toFixed(0)},${sy.toFixed(0)})`,
       output: `${dom.canvas.width}x${dom.canvas.height}`,
+      exportScale: exportScale.toFixed(2),
       zoom: `${zoom}x`
     });
   }
 
   // Draw the cropped video frame to canvas (single-pass for crisp output)
-  // Enable high-quality smoothing only if we're downscaling
-  const isDownscaling = (zoomedWidth > dom.canvas.width) || (zoomedHeight > dom.canvas.height);
-  ctx.imageSmoothingEnabled = isDownscaling;
-  ctx.imageSmoothingQuality = isDownscaling ? 'high' : 'medium';
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = exportScale < 1 ? 'high' : 'medium';
 
   // Build filter chain for canvas rendering
   const brightnessVal = 1 + state.featureState.exposureValue * 0.18;
@@ -1273,11 +1538,13 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
     ctx.putImageData(imageData, 0, 0);
   }
 
-  if (state.settings.showData) drawReportOverlay(ctx, dom.canvas);
+  const shouldLoadLogo = state.settings.showData || state.settings.watermark;
+  const logoOk = shouldLoadLogo ? await ensureLogoLoaded(800) : false;
+
+  if (state.settings.showData) drawReportOverlay(ctx, dom.canvas, logoOk);
   if (state.settings.showCompass) drawCompassBadgeOverlay(ctx, dom.canvas);
 
-  const logoOk = await ensureLogoLoaded(800);
-  if (state.settings.watermark || logoOk) {
+  if (state.settings.watermark && !state.settings.showData) {
     addWatermarkToCanvas(ctx, dom.canvas.width);
   }
 
@@ -1304,6 +1571,7 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
     await dbPutPhoto({ ...photo, blob });
     state.photos.push(photo);
     state.lastCapturedPhotoId = photo.id;
+    notifyPhotosChanged();
     onCaptured?.(photo);
     if (!state.featureState.burstMode) showStatus?.(t('photoCaptured'), 1500);
   } catch (err) {

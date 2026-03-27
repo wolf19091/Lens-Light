@@ -21,7 +21,7 @@ export function downloadBlob(blob, filename, { showStatus } = {}) {
 
   if (isIOS) {
     const opened = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!opened && showStatus) showStatus('⚠️ Popup blocked. Tap and hold to save.', 3500);
+    if (!opened && showStatus) showStatus('Popup blocked. Tap and hold to save.', 3500);
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
     return;
   }
@@ -36,41 +36,65 @@ export function downloadBlob(blob, filename, { showStatus } = {}) {
   URL.revokeObjectURL(url);
 }
 
+export const PHOTOS_CHANGED_EVENT = 'lenslight:photos-changed';
+
+export function notifyPhotosChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(PHOTOS_CHANGED_EVENT));
+}
+
+export function createGoogleMapsUrl(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return '';
+  return `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`;
+}
+
 export function createGoogleMapsLink(lat, lon, locationName = '') {
-  if (!lat || !lon || !Number.isFinite(lat) || !Number.isFinite(lon)) return '';
-  
-  const mapsUrl = `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`;
-  const label = locationName ? `\n📍 ${locationName}` : '';
-  
-  return `${label}\n🗺️ View on Maps: ${mapsUrl}`;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return '';
+
+  const mapsUrl = createGoogleMapsUrl(lat, lon);
+  const cleanLocation = String(locationName || '').trim();
+  const lines = [];
+
+  if (cleanLocation) lines.push(`Location: ${cleanLocation}`);
+  lines.push(`Coordinates: ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+  lines.push(`Map: ${mapsUrl}`);
+
+  return lines.join('\n');
+}
+
+export function buildPhotoShareData(photoMeta, { t } = {}) {
+  const baseText = t ? t('shareText') : 'Photo from Lens Light.';
+  const lat = Number(photoMeta?.lat);
+  const lon = Number(photoMeta?.lon);
+  const locationName = String(
+    photoMeta?.location ||
+    photoMeta?.customLocation ||
+    photoMeta?.projectName ||
+    ''
+  ).trim();
+  const locationBlock = createGoogleMapsLink(lat, lon, locationName);
+  const url = createGoogleMapsUrl(lat, lon);
+
+  return {
+    text: locationBlock ? `${baseText}\n\n${locationBlock}` : baseText,
+    url
+  };
 }
 
 export async function shareBlob(blob, filename, { t, photoMeta } = {}) {
   if (!navigator.share) return false;
 
   const file = new File([blob], filename, { type: blob.type || 'image/jpeg' });
-  
-  // Build share text with location if available
-  let shareText = t ? t('shareText') : 'Survey Photo';
-  
-  if (photoMeta && photoMeta.lat && photoMeta.lon) {
-    const locationText = createGoogleMapsLink(
-      photoMeta.lat, 
-      photoMeta.lon, 
-      photoMeta.location || photoMeta.customLocation
-    );
-    if (locationText) {
-      shareText = shareText + locationText;
-    }
-  }
-  
+  const { text, url } = buildPhotoShareData(photoMeta, { t });
+
   if (navigator.canShare && !navigator.canShare({ files: [file] })) return false;
 
   try {
-    await navigator.share({ 
-      files: [file], 
-      title: t ? t('shareTitle') : 'Survey Photo', 
-      text: shareText 
+    await navigator.share({
+      files: [file],
+      title: t ? t('shareTitle') : 'Survey Photo',
+      text,
+      url
     });
     return true;
   } catch (e) {

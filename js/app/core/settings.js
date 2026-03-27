@@ -19,6 +19,8 @@ export function loadSettings(dom) {
     console.warn('loadSettings failed', e);
   }
 
+  if (!Array.isArray(state.settings.savedProjects)) state.settings.savedProjects = [];
+
   if (dom?.projectNameInput) dom.projectNameInput.value = state.settings.projectName || '';
   if (dom?.customLocationInput) dom.customLocationInput.value = state.settings.customLocation || '';
   if (dom?.unitsSelect) dom.unitsSelect.value = state.settings.units || 'metric';
@@ -61,7 +63,7 @@ export function loadSettings(dom) {
   }
 }
 
-export function bindSettingsUi(dom, { showStatus, updateWeatherDisplay, renderGallery, revokeAllPhotoObjectUrls, clearAllPhotos, updateGalleryUI, loadSettings: reloadSettings } = {}) {
+export function bindSettingsUi(dom, { showStatus, updateWeatherDisplay, renderGallery, revokeAllPhotoObjectUrls, clearAllPhotos, updateGalleryUI, loadSettings: reloadSettings, syncProjectUi } = {}) {
   dom?.settingsBtn?.addEventListener('click', () => {
     dom.settingsPanel?.classList.add('open');
     dom.settingsPanel?.setAttribute('aria-hidden', 'false');
@@ -75,6 +77,7 @@ export function bindSettingsUi(dom, { showStatus, updateWeatherDisplay, renderGa
   dom?.projectNameInput?.addEventListener('change', (e) => {
     state.settings.projectName = sanitizeInput(e.target.value);
     saveSettings();
+    syncProjectUi?.();
   });
 
   dom?.customLocationInput?.addEventListener('change', (e) => {
@@ -184,6 +187,7 @@ export function bindSettingsUi(dom, { showStatus, updateWeatherDisplay, renderGa
       state.settings = {
         ...state.settings,
         projectName: '',
+        savedProjects: [],
         customLocation: '',
         units: 'metric',
         language: 'en',
@@ -197,6 +201,7 @@ export function bindSettingsUi(dom, { showStatus, updateWeatherDisplay, renderGa
       };
 
       reloadSettings?.(dom);
+      syncProjectUi?.();
       updateGalleryUI?.();
       renderGallery?.();
       showStatus?.(t('dataCleared'), 2500);

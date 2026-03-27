@@ -8,6 +8,7 @@ export const state = {
   SETTINGS_KEY: 'surveycam_settings',
   settings: {
     projectName: '',
+    savedProjects: [],
     customLocation: 'Riyadh Province',
     units: 'metric',
     language: 'en',
@@ -90,6 +91,19 @@ export const state = {
   selectedPhotos: new Set(),
   isSelectMode: false,
   photoObjectUrls: new Map(),
+  exportPrep: {
+    open: false,
+    source: 'gallery',
+    items: [],
+    dragId: null,
+    options: {
+      includeImages: true,
+      includeNotes: true,
+      includeTags: true,
+      includeMetadata: true,
+      includeMapsLinks: true
+    }
+  },
 
   // wake lock
   wakeLock: null

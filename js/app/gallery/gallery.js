@@ -1,12 +1,30 @@
 import { state } from '../state.js';
-import { sleep, downloadBlob, shareBlob } from '../core/utils.js';
+import { sleep, downloadBlob, shareBlob, buildPhotoShareData, notifyPhotosChanged } from '../core/utils.js';
 import { t } from '../core/i18n.js';
 import { dbGetAllPhotosMeta, dbGetPhoto, dbDeletePhoto, dbPutPhoto, openPhotoDb, migrateLegacyLocalStoragePhotos } from '../storage/photoDb.js';
+
+const normalizeProjectName = (value) => String(value || '').trim();
 
 export function getPhotoFilename(photoMeta) {
   const iso = String(photoMeta.timestamp || new Date().toISOString()).replace(/[:.]/g, '-');
   const projectPrefix = photoMeta.projectName ? String(photoMeta.projectName).replace(/\s+/g, '_') + '_' : '';
   return `${projectPrefix}Survey_${iso}.jpg`;
+}
+
+export function getActiveProjectName() {
+  return normalizeProjectName(state.settings.projectName);
+}
+
+export function getGalleryPhotos() {
+  const activeProject = getActiveProjectName();
+  if (!activeProject) return state.photos;
+  return state.photos.filter((photo) => normalizeProjectName(photo.projectName) === activeProject);
+}
+
+export function getProjectPhotoCount(projectName) {
+  const target = normalizeProjectName(projectName);
+  if (!target) return 0;
+  return state.photos.filter((photo) => normalizeProjectName(photo.projectName) === target).length;
 }
 
 export function revokeAllPhotoObjectUrls() {
@@ -19,8 +37,12 @@ export function revokeAllPhotoObjectUrls() {
 }
 
 export function updateGalleryUI(dom) {
-  const count = state.photos.length;
+  const activeProject = getActiveProjectName();
+  const count = getGalleryPhotos().length;
   if (dom?.galleryCountEl) dom.galleryCountEl.textContent = String(count);
+  if (dom?.galleryTitleText) {
+    dom.galleryTitleText.textContent = activeProject ? `🗂️ ${activeProject}` : '📷 Gallery';
+  }
 
   if (dom?.photoCountEl) {
     if (count > 0) {
@@ -40,7 +62,7 @@ export function updateSelectAllButton(dom) {
     return;
   }
 
-  const allIds = state.photos.map((p) => p.id);
+  const allIds = getGalleryPhotos().map((p) => p.id);
   const isAllSelected = allIds.length > 0 && allIds.every((id) => state.selectedPhotos.has(id));
   dom.selectAllBtn.textContent = isAllSelected
     ? state.currentLang === 'ar'
@@ -73,6 +95,7 @@ export async function loadPhotos(dom) {
     .sort((a, b) => (a.id > b.id ? 1 : -1));
 
   updateGalleryUI(dom);
+  notifyPhotosChanged();
 }
 
 export function closePhotoViewer(dom) {
@@ -177,15 +200,24 @@ export function createGalleryObserver(dom) {
 export function renderGallery(dom, galleryObserver, { showStatus } = {}) {
   if (!dom?.galleryGrid) return;
   dom.galleryGrid.innerHTML = '';
+  updateGalleryUI(dom);
 
-  if (state.photos.length === 0) {
+  const visiblePhotos = getGalleryPhotos();
+  const activeProject = getActiveProjectName();
+
+  if (visiblePhotos.length === 0) {
     if (dom?.selectModeBtn) dom.selectModeBtn.style.display = 'none';
-    dom.galleryGrid.innerHTML = `<div class="empty-gallery-state">${t('noPhotos')}</div>`;
+    const emptyMessage = activeProject
+      ? state.currentLang === 'ar'
+        ? `لا توجد صور في مشروع ${activeProject} بعد.`
+        : `No photos in ${activeProject} yet.`
+      : t('noPhotos');
+    dom.galleryGrid.innerHTML = `<div class="empty-gallery-state">${emptyMessage}</div>`;
     return;
   }
 
   const fragment = document.createDocumentFragment();
-  const reversed = state.photos.slice().reverse();
+  const reversed = visiblePhotos.slice().reverse();
   for (const photo of reversed) {
     const item = document.createElement('div');
     item.className = 'gallery-item';
@@ -261,7 +293,7 @@ export function exitSelectMode(dom) {
   state.isSelectMode = false;
   state.selectedPhotos.clear();
   if (dom?.galleryActionsDiv) dom.galleryActionsDiv.style.display = 'none';
-  if (state.photos.length > 0 && dom?.selectModeBtn) dom.selectModeBtn.style.display = 'block';
+  if (getGalleryPhotos().length > 0 && dom?.selectModeBtn) dom.selectModeBtn.style.display = 'block';
   document.querySelectorAll('.gallery-item').forEach((el) => el.classList.remove('select-mode', 'selected'));
   updateSelectAllButton(dom);
 }
@@ -282,6 +314,7 @@ export async function deletePhoto(id, dom, { showStatus } = {}, galleryObserver)
       state.photoObjectUrls.delete(numericId);
     }
 
+    notifyPhotosChanged();
     updateGalleryUI(dom);
     renderGallery(dom, galleryObserver, { showStatus });
     showStatus?.(state.currentLang === 'ar' ? '✓ تم حذف الصورة' : '✓ Photo deleted', 1500);
@@ -293,7 +326,8 @@ export async function deletePhoto(id, dom, { showStatus } = {}, galleryObserver)
 
 export async function shareSelectedPhotos(dom, { showStatus } = {}) {
   const files = [];
-  const locations = [];
+  const shareBlocks = [];
+  let firstUrl = '';
   
   for (const id of state.selectedPhotos) {
     const record = await dbGetPhoto(id);
@@ -302,11 +336,11 @@ export async function shareSelectedPhotos(dom, { showStatus } = {}) {
     const filename = getPhotoFilename(meta);
     files.push(new File([record.blob], filename, { type: record.blob.type || 'image/jpeg' }));
     
-    // Collect location data
-    if (meta.lat && meta.lon) {
-      const { createGoogleMapsLink } = await import('../core/utils.js');
-      locations.push(createGoogleMapsLink(meta.lat, meta.lon, meta.location));
-    }
+    const { text, url } = buildPhotoShareData(meta, { t });
+    const detailPrefix = `${t('shareText')}\n\n`;
+    const detailBlock = text.startsWith(detailPrefix) ? text.slice(detailPrefix.length).trim() : '';
+    if (detailBlock) shareBlocks.push(detailBlock);
+    if (!firstUrl && url) firstUrl = url;
   }
 
   if (files.length === 0) {
@@ -325,13 +359,11 @@ export async function shareSelectedPhotos(dom, { showStatus } = {}) {
   }
 
   try {
-    // Include locations in share text
-    let shareText = t('shareText');
-    if (locations.length > 0) {
-      shareText = shareText + '\n\n' + locations.join('\n\n');
-    }
-    
-    await navigator.share({ files, title: `${files.length} photo(s)`, text: shareText });
+    const shareText = shareBlocks.length > 0
+      ? `${t('shareText')}\n\n${shareBlocks.join('\n\n')}`
+      : t('shareText');
+
+    await navigator.share({ files, title: `${files.length} photo(s)`, text: shareText, url: firstUrl });
     showStatus?.('✓ Shared', 2000);
     exitSelectMode(dom);
   } catch (e) {
@@ -374,6 +406,7 @@ export async function deleteSelectedPhotos(dom, { showStatus } = {}, galleryObse
     }
   }
 
+  if (deleted > 0) notifyPhotosChanged();
   updateGalleryUI(dom);
   renderGallery(dom, galleryObserver, { showStatus });
   exitSelectMode(dom);

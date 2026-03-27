@@ -24,9 +24,12 @@ import {
   shareLastCapturedPhoto,
   getPhotoFilename,
   updatePhotoComment,
-  updateSelectAllButton
+  updateSelectAllButton,
+  getGalleryPhotos,
+  getProjectPhotoCount,
+  getActiveProjectName
 } from './app/gallery/gallery.js';
-import { clearAllPhotos, dbGetPhoto } from './app/storage/photoDb.js';
+import { clearAllPhotos, dbGetPhoto, dbPutPhoto } from './app/storage/photoDb.js';
 import {
   initCamera,
   checkStorageQuota,
@@ -37,7 +40,7 @@ import {
   toggleTorch,
   applyExposureToTrackOrPreview
 } from './app/camera/camera.js';
-import { clamp } from './app/core/utils.js';
+import { clamp, sanitizeInput, PHOTOS_CHANGED_EVENT } from './app/core/utils.js';
 import { startSensors, stopSensors, maybeUpdateCustomLocationFromWebFactory, updateWeatherDisplay, requestPreciseLocation } from './app/sensors/sensors.js';
 
 // NEW FEATURES
@@ -63,6 +66,14 @@ function initializeApp() {
 
 const dom = getDom();
 const { showStatus } = createStatus(dom.statusMsg);
+
+function isTouchPrimaryInput() {
+  return Boolean(
+    window.matchMedia?.('(pointer: coarse)')?.matches ||
+    window.matchMedia?.('(hover: none)')?.matches ||
+    navigator.maxTouchPoints > 0
+  );
+}
 
 function warnIfElementCovered(el) {
   if (!el) return;
@@ -171,6 +182,392 @@ function checkStoredPermissionsAndBootstrap() {
 
 // Gallery observer
 const galleryObserver = createGalleryObserver(dom);
+
+function getProjectUiText() {
+  if (state.currentLang === 'ar') {
+    return {
+      buttonLabel: 'أدوات المشروع',
+      panelTitle: '🗂️ المشروع',
+      nameLabel: '📝 اسم المشروع',
+      placeholder: 'مثال: مسح الموقع 2026',
+      copy: 'أنشئ اسم المشروع أو حدّثه، ثم أضف صوراً من جهازك إلى هذا المشروع.',
+      save: 'حفظ المشروع',
+      addPhotos: '➕ إضافة صور',
+      close: 'إغلاق',
+      projectSaved: '✓ تم حفظ المشروع',
+      projectCleared: '✓ تم مسح اسم المشروع',
+      projectNameRequired: '⚠️ أدخل اسم المشروع أولاً',
+      noImagesSelected: '⚠️ اختر صورة واحدة على الأقل',
+      importFailed: '❌ تعذر إضافة الصور',
+      addedCount: (count) => `✓ تمت إضافة ${count} صورة إلى المشروع`
+    };
+  }
+
+  return {
+    buttonLabel: 'Project tools',
+    panelTitle: '🗂️ Project',
+    nameLabel: '📝 Project Name',
+    placeholder: 'e.g., Site Survey 2026',
+    copy: 'Create or update the project name, then add photos from your device to this project.',
+    save: 'Save Project',
+    addPhotos: '➕ Add Photos',
+    close: 'Close',
+    projectSaved: '✓ Project saved',
+    projectCleared: '✓ Project cleared',
+    projectNameRequired: '⚠️ Enter a project name first',
+    noImagesSelected: '⚠️ Select at least one image',
+    importFailed: '❌ Failed to add photos',
+    addedCount: (count) => `✓ Added ${count} photo(s) to project`
+  };
+}
+
+function syncProjectInputs(projectName = state.settings.projectName || '') {
+  if (dom.projectNameInput) dom.projectNameInput.value = projectName;
+  if (dom.projectPanelNameInput) dom.projectPanelNameInput.value = projectName;
+  dom.projectBtn?.classList.toggle('active', Boolean(projectName));
+}
+
+function applyProjectUiText() {
+  const text = getProjectUiText();
+  const activeProject = getActiveProjectName();
+
+  if (dom.projectBtn) {
+    dom.projectBtn.title = text.buttonLabel;
+    dom.projectBtn.setAttribute('aria-label', text.buttonLabel);
+  }
+
+  if (dom.projectPanelTitle) dom.projectPanelTitle.textContent = projectText('panelTitle');
+  if (dom.projectPanelNameLabel) dom.projectPanelNameLabel.textContent = text.nameLabel;
+  if (dom.projectPanelNameInput) dom.projectPanelNameInput.placeholder = text.placeholder;
+  if (dom.projectPanelCopy) dom.projectPanelCopy.textContent = projectText('copy');
+  if (dom.projectCurrentLabel) dom.projectCurrentLabel.textContent = activeProject ? projectText('activeProjectLabel') : projectText('noProjectOpen');
+  if (dom.projectCurrentName) dom.projectCurrentName.textContent = activeProject || projectText('noProjectHint');
+  if (dom.openProjectBtn) dom.openProjectBtn.textContent = projectText('openProject');
+  if (dom.takeProjectPhotoBtn) dom.takeProjectPhotoBtn.textContent = projectText('takePhoto');
+  if (dom.openProjectGalleryBtn) dom.openProjectGalleryBtn.textContent = projectText('openPhotos');
+  if (dom.addProjectPhotoBtn) dom.addProjectPhotoBtn.textContent = projectText('addPhotos');
+  if (dom.closeActiveProjectBtn) dom.closeActiveProjectBtn.textContent = projectText('closeProject');
+  if (dom.projectListTitle) dom.projectListTitle.textContent = projectText('projectFiles');
+  if (dom.closeProjectPanelBtn) {
+    dom.closeProjectPanelBtn.textContent = text.close;
+    dom.closeProjectPanelBtn.setAttribute('aria-label', text.close);
+  }
+}
+
+function openProjectPanel() {
+  refreshProjectManagerUi();
+  dom.projectPanelBackdrop?.classList.add('active');
+  dom.projectPanel?.classList.add('open');
+  dom.projectPanel?.setAttribute('aria-hidden', 'false');
+  if (!isTouchPrimaryInput()) {
+    dom.projectPanelNameInput?.focus?.();
+    dom.projectPanelNameInput?.select?.();
+  }
+}
+
+function closeProjectPanel() {
+  dom.projectPanelNameInput?.blur?.();
+  dom.projectPanelBackdrop?.classList.remove('active');
+  dom.projectPanel?.classList.remove('open');
+  dom.projectPanel?.setAttribute('aria-hidden', 'true');
+  if (!isTouchPrimaryInput()) dom.projectBtn?.focus?.();
+}
+
+function projectText(key, value) {
+  const isAr = state.currentLang === 'ar';
+
+  switch (key) {
+    case 'panelTitle':
+      return isAr ? '\uD83D\uDCC2 \u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639' : '🗂️ Projects';
+    case 'copy':
+      return isAr
+        ? '\u0627\u0641\u062A\u062D \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0643\u0645\u0644\u0641\u060C \u062B\u0645 \u0627\u0644\u062A\u0642\u0637 \u0635\u0648\u0631\u0627\u064B \u0623\u0648 \u0623\u0636\u0641\u0647\u0627 \u0625\u0644\u0649 \u0647\u0630\u0627 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0641\u0642\u0637.'
+        : 'Open a project like a file, then take photos, add photos, or open only that project\'s gallery.';
+    case 'openProject':
+      return isAr ? '\u0627\u0641\u062A\u062D \u0627\u0644\u0645\u0634\u0631\u0648\u0639' : 'Open Project';
+    case 'takePhoto':
+      return isAr ? '\uD83D\uDCF8 \u0627\u0644\u062A\u0642\u0637 \u0635\u0648\u0631\u0629' : '📸 Take Photo';
+    case 'openPhotos':
+      return isAr ? '\uD83D\uDDBC\uFE0F \u0627\u0641\u062A\u062D \u0627\u0644\u0635\u0648\u0631' : '🖼️ Open Photos';
+    case 'addPhotos':
+      return isAr ? '\u2795 \u0625\u0636\u0627\u0641\u0629 \u0635\u0648\u0631' : '➕ Add Photos';
+    case 'closeProject':
+      return isAr ? '\u0625\u063A\u0644\u0627\u0642 \u0627\u0644\u0645\u0634\u0631\u0648\u0639' : 'Close Project';
+    case 'projectFiles':
+      return isAr ? '\u0645\u0644\u0641\u0627\u062A \u0627\u0644\u0645\u0634\u0631\u0648\u0639' : 'Project Files';
+    case 'noProjectOpen':
+      return isAr ? '\u0644\u0627 \u064A\u0648\u062C\u062F \u0645\u0634\u0631\u0648\u0639 \u0645\u0641\u062A\u0648\u062D' : 'No project open';
+    case 'noProjectHint':
+      return isAr
+        ? '\u0627\u0641\u062A\u062D \u0623\u0648 \u0623\u0646\u0634\u0626 \u0645\u0634\u0631\u0648\u0639\u0627\u064B \u0644\u0628\u062F\u0621 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0635\u0648\u0631 \u0648\u0625\u0636\u0627\u0641\u062A\u0647\u0627.'
+        : 'Open or create a project to start taking and adding photos.';
+    case 'activeProjectLabel':
+      return isAr ? '\u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0645\u0641\u062A\u0648\u062D' : 'Open project';
+    case 'projectNameRequired':
+      return isAr ? '\u26A0\uFE0F \u0623\u062F\u062E\u0644 \u0627\u0633\u0645 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0623\u0648\u0644\u0627\u064B' : '⚠️ Enter a project name first';
+    case 'noSavedProjects':
+      return isAr ? '\u0644\u0627 \u062A\u0648\u062C\u062F \u0645\u0634\u0627\u0631\u064A\u0639 \u0628\u0639\u062F.' : 'No project files yet.';
+    case 'projectOpened':
+      return isAr ? `\u2713 \u062A\u0645 \u0641\u062A\u062D ${value}` : `✓ Opened ${value}`;
+    case 'projectClosed':
+      return isAr ? '\u2713 \u062A\u0645 \u0625\u063A\u0644\u0627\u0642 \u0627\u0644\u0645\u0634\u0631\u0648\u0639' : '✓ Project closed';
+    case 'projectFileMeta':
+      return isAr ? `${value} \u0635\u0648\u0631\u0629` : `${value} photo(s)`;
+    case 'readyForCapture':
+      return isAr ? `\uD83D\uDCF8 ${value} \u062C\u0627\u0647\u0632 \u0644\u0644\u0627\u0644\u062A\u0642\u0627\u0637` : `📸 ${value} ready for capture`;
+    case 'noImagesSelected':
+      return isAr ? '\u26A0\uFE0F \u0627\u062E\u062A\u0631 \u0635\u0648\u0631\u0629 \u0648\u0627\u062D\u062F\u0629 \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644' : '⚠️ Select at least one image';
+    case 'importFailed':
+      return isAr ? '\u274C \u062A\u0639\u0630\u0631 \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0635\u0648\u0631' : '❌ Failed to add photos';
+    case 'addedCount':
+      return isAr ? `\u2713 \u062A\u0645\u062A \u0625\u0636\u0627\u0641\u0629 ${value} \u0635\u0648\u0631\u0629 \u0625\u0644\u0649 \u0627\u0644\u0645\u0634\u0631\u0648\u0639` : `✓ Added ${value} photo(s) to project`;
+    default:
+      return '';
+  }
+}
+
+function getProjectFiles() {
+  const seen = new Set();
+  const files = [];
+  const add = (value) => {
+    const name = sanitizeInput(value).trim();
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    files.push(name);
+  };
+
+  if (Array.isArray(state.settings.savedProjects)) {
+    state.settings.savedProjects.forEach(add);
+  }
+  state.photos.forEach((photo) => add(photo.projectName));
+  add(state.settings.projectName);
+
+  return files.sort((a, b) => a.localeCompare(b, state.currentLang === 'ar' ? 'ar' : 'en', { sensitivity: 'base' }));
+}
+
+function syncSavedProjectFiles({ persist = true } = {}) {
+  const next = getProjectFiles();
+  const current = Array.isArray(state.settings.savedProjects) ? state.settings.savedProjects : [];
+  const changed = next.length !== current.length || next.some((name, index) => name !== current[index]);
+
+  if (changed) {
+    state.settings.savedProjects = next;
+    if (persist) saveSettings();
+  }
+
+  return next;
+}
+
+function updateActiveProjectBadge() {
+  const activeProject = getActiveProjectName();
+
+  if (!dom.activeProjectBadge) return;
+
+  if (!activeProject) {
+    dom.activeProjectBadge.style.display = 'none';
+    dom.activeProjectBadge.textContent = '';
+    return;
+  }
+
+  dom.activeProjectBadge.style.display = 'inline-flex';
+  dom.activeProjectBadge.textContent = activeProject;
+  dom.activeProjectBadge.setAttribute('aria-label', activeProject);
+}
+
+function renderProjectFiles() {
+  if (!dom.projectList) return;
+
+  const files = syncSavedProjectFiles({ persist: false });
+  const activeProject = getActiveProjectName();
+  dom.projectList.innerHTML = '';
+
+  if (files.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'project-list-empty';
+    empty.textContent = projectText('noSavedProjects');
+    dom.projectList.appendChild(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (const name of files) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'project-file';
+    if (name === activeProject) item.classList.add('active');
+    item.dataset.projectName = name;
+
+    const icon = document.createElement('span');
+    icon.className = 'project-file-icon';
+    icon.textContent = '🗂️';
+
+    const body = document.createElement('span');
+    body.className = 'project-file-body';
+
+    const title = document.createElement('span');
+    title.className = 'project-file-name';
+    title.textContent = name;
+
+    const meta = document.createElement('span');
+    meta.className = 'project-file-meta';
+    meta.textContent = projectText('projectFileMeta', getProjectPhotoCount(name));
+
+    body.appendChild(title);
+    body.appendChild(meta);
+    item.appendChild(icon);
+    item.appendChild(body);
+    fragment.appendChild(item);
+  }
+
+  dom.projectList.appendChild(fragment);
+}
+
+function refreshProjectManagerUi() {
+  syncSavedProjectFiles({ persist: true });
+  syncProjectInputs(state.settings.projectName || '');
+  applyProjectUiText();
+  updateActiveProjectBadge();
+  renderProjectFiles();
+  updateGalleryUI(dom);
+}
+
+window.addEventListener(PHOTOS_CHANGED_EVENT, () => {
+  refreshProjectManagerUi();
+});
+
+function openProjectFile(projectName, { announce = true, closePanelAfter = false } = {}) {
+  const nextProject = sanitizeInput(projectName).trim();
+  if (!nextProject) {
+    showStatus(projectText('projectNameRequired'), 2200);
+    dom.projectPanelNameInput?.focus?.();
+    return null;
+  }
+
+  state.settings.projectName = nextProject;
+  state.settings.savedProjects = getProjectFiles();
+  saveSettings();
+  refreshProjectManagerUi();
+
+  if (dom.galleryModal?.classList.contains('open')) {
+    exitSelectMode(dom);
+    renderGallery(dom, galleryObserver, { showStatus });
+  }
+
+  if (announce) showStatus(projectText('projectOpened', nextProject), 1800);
+  if (closePanelAfter) closeProjectPanel();
+  return nextProject;
+}
+
+function closeProjectFile({ announce = true } = {}) {
+  if (!getActiveProjectName()) return;
+
+  state.settings.projectName = '';
+  saveSettings();
+  refreshProjectManagerUi();
+
+  if (dom.galleryModal?.classList.contains('open')) {
+    exitSelectMode(dom);
+    renderGallery(dom, galleryObserver, { showStatus });
+  }
+
+  if (announce) showStatus(projectText('projectClosed'), 1800);
+}
+
+function openActiveProjectGallery() {
+  const activeProject = openProjectFile(dom.projectPanelNameInput?.value ?? state.settings.projectName, {
+    announce: false,
+    closePanelAfter: false
+  });
+  if (!activeProject) return;
+
+  dom.galleryModal?.classList.add('open');
+  dom.galleryModal?.setAttribute('aria-hidden', 'false');
+  renderGallery(dom, galleryObserver, { showStatus });
+  if (getGalleryPhotos().length > 0 && dom.selectModeBtn) dom.selectModeBtn.style.display = 'block';
+  if (!isTouchPrimaryInput()) dom.closeGalleryBtn?.focus?.();
+  closeProjectPanel();
+}
+
+function armActiveProjectForCapture() {
+  const activeProject = openProjectFile(dom.projectPanelNameInput?.value ?? state.settings.projectName, {
+    announce: false,
+    closePanelAfter: true
+  });
+  if (!activeProject) return;
+
+  showStatus(projectText('readyForCapture', activeProject), 1800);
+  if (!isTouchPrimaryInput()) dom.shutterBtn?.focus?.();
+}
+
+async function importIntoActiveProject(fileList) {
+  const files = Array.from(fileList || []).filter((file) => file && String(file.type || '').startsWith('image/'));
+  if (files.length === 0) {
+    showStatus(projectText('noImagesSelected'), 2200);
+    return;
+  }
+
+  const activeProject = openProjectFile(dom.projectPanelNameInput?.value ?? state.settings.projectName, {
+    announce: false,
+    closePanelAfter: false
+  });
+
+  if (!activeProject) {
+    if (dom.projectPhotoInput) dom.projectPhotoInput.value = '';
+    return;
+  }
+
+  let importedCount = 0;
+  let lastImportedId = null;
+  const baseId = Date.now();
+
+  for (const [index, file] of files.entries()) {
+    const photoId = baseId + index;
+    const timestampSeed = Number.isFinite(file.lastModified) && file.lastModified > 0
+      ? file.lastModified
+      : Date.now() + index;
+
+    try {
+      await dbPutPhoto({
+        id: photoId,
+        timestamp: new Date(timestampSeed).toISOString(),
+        lat: state.currentLat,
+        lon: state.currentLon,
+        alt: state.currentAlt,
+        heading: state.currentHeading,
+        projectName: activeProject,
+        location: state.settings.customLocation,
+        comment: '',
+        mime: file.type || 'image/jpeg',
+        filter: 'normal',
+        blob: file
+      });
+      importedCount += 1;
+      lastImportedId = photoId;
+    } catch (error) {
+      console.error('Project photo import failed', file?.name, error);
+    }
+  }
+
+  if (dom.projectPhotoInput) dom.projectPhotoInput.value = '';
+
+  if (!importedCount) {
+    showStatus(projectText('importFailed'), 3000);
+    return;
+  }
+
+  if (lastImportedId) state.lastCapturedPhotoId = lastImportedId;
+
+  await loadPhotos(dom);
+  state.settings.savedProjects = getProjectFiles();
+  saveSettings();
+  refreshProjectManagerUi();
+
+  if (dom.galleryModal?.classList.contains('open')) {
+    renderGallery(dom, galleryObserver, { showStatus });
+  }
+
+  showStatus(projectText('addedCount', importedCount), 2200);
+}
 
 // Double-tap to flip camera
 let lastTap = 0;
@@ -338,7 +735,48 @@ bindSettingsUi(dom, {
   revokeAllPhotoObjectUrls,
   clearAllPhotos,
   updateGalleryUI: () => updateGalleryUI(dom),
-  loadSettings: (d) => loadSettings(d)
+  loadSettings: (d) => loadSettings(d),
+  syncProjectUi: () => refreshProjectManagerUi()
+});
+
+dom.languageSelect?.addEventListener('change', () => refreshProjectManagerUi());
+
+dom.projectBtn?.addEventListener('click', () => openProjectPanel());
+dom.projectPanelBackdrop?.addEventListener('click', () => closeProjectPanel());
+dom.closeProjectPanelBtn?.addEventListener('click', () => closeProjectPanel());
+dom.openProjectBtn?.addEventListener('click', () => {
+  openProjectFile(dom.projectPanelNameInput?.value ?? state.settings.projectName, { announce: true, closePanelAfter: false });
+});
+dom.projectPanelNameInput?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  openProjectFile(dom.projectPanelNameInput?.value ?? state.settings.projectName, { announce: true, closePanelAfter: false });
+});
+dom.takeProjectPhotoBtn?.addEventListener('click', () => {
+  armActiveProjectForCapture();
+});
+dom.openProjectGalleryBtn?.addEventListener('click', () => {
+  openActiveProjectGallery();
+});
+dom.addProjectPhotoBtn?.addEventListener('click', () => {
+  const projectName = openProjectFile(dom.projectPanelNameInput?.value ?? state.settings.projectName, {
+    announce: false,
+    closePanelAfter: false
+  });
+  if (!projectName) return;
+  dom.projectPhotoInput?.click();
+});
+dom.closeActiveProjectBtn?.addEventListener('click', () => {
+  closeProjectFile({ announce: true });
+});
+dom.projectList?.addEventListener('click', (event) => {
+  const button = event.target.closest('.project-file');
+  if (!button) return;
+  const projectName = button.dataset.projectName || '';
+  openProjectFile(projectName, { announce: true, closePanelAfter: false });
+});
+dom.projectPhotoInput?.addEventListener('change', async (event) => {
+  await importIntoActiveProject(event.target.files);
 });
 
 // Gallery modal
@@ -347,8 +785,8 @@ if (dom.galleryBtn) {
     dom.galleryModal?.classList.add('open');
     dom.galleryModal?.setAttribute('aria-hidden', 'false');
     renderGallery(dom, galleryObserver, { showStatus });
-    if (state.photos.length > 0 && dom.selectModeBtn) dom.selectModeBtn.style.display = 'block';
-    dom.closeGalleryBtn?.focus?.();
+    if (getGalleryPhotos().length > 0 && dom.selectModeBtn) dom.selectModeBtn.style.display = 'block';
+    if (!isTouchPrimaryInput()) dom.closeGalleryBtn?.focus?.();
   });
 }
 
@@ -358,7 +796,7 @@ dom.closeGalleryBtn?.addEventListener('click', () => {
   revokeAllPhotoObjectUrls();
   dom.galleryModal?.classList.remove('open');
   // Move focus out of the dialog before hiding it from assistive tech.
-  dom.galleryBtn?.focus?.();
+  if (!isTouchPrimaryInput()) dom.galleryBtn?.focus?.();
   dom.galleryModal?.setAttribute('aria-hidden', 'true');
 });
 
@@ -374,7 +812,7 @@ dom.cancelSelectBtn?.addEventListener('click', () => {
 
 dom.selectAllBtn?.addEventListener('click', () => {
   if (!state.isSelectMode) return;
-  const allIds = state.photos.map((p) => p.id);
+  const allIds = getGalleryPhotos().map((p) => p.id);
   const isAllSelected = allIds.length > 0 && allIds.every((id) => state.selectedPhotos.has(id));
 
   state.selectedPhotos = isAllSelected ? new Set() : new Set(allIds);
@@ -472,8 +910,20 @@ dom.shareBtn?.addEventListener('click', () => {
 
   if (state.photos.length > 0) {
     dom.galleryModal?.classList.add('open');
+    dom.galleryModal?.setAttribute('aria-hidden', 'false');
     renderGallery(dom, galleryObserver, { showStatus });
-    showStatus(state.currentLang === 'ar' ? 'اختر صورة للمشاركة/الحفظ' : 'Select a photo to share/save', 2000);
+    if (getGalleryPhotos().length > 0 && dom.selectModeBtn) dom.selectModeBtn.style.display = 'block';
+    if (!isTouchPrimaryInput()) dom.closeGalleryBtn?.focus?.();
+    showStatus(
+      getGalleryPhotos().length > 0
+        ? state.currentLang === 'ar'
+          ? 'اختر صورة للمشاركة/الحفظ'
+          : 'Select a photo to share/save'
+        : state.currentLang === 'ar'
+          ? 'لا توجد صور في المشروع المفتوح بعد'
+          : 'No photos in the open project yet',
+      2000
+    );
     return;
   }
 
@@ -676,10 +1126,13 @@ window.addEventListener('beforeunload', () => {
 
 window.addEventListener('resize', updateAppVh);
 window.addEventListener('orientationchange', updateAppVh);
+window.visualViewport?.addEventListener('resize', updateAppVh);
+window.visualViewport?.addEventListener('scroll', updateAppVh);
 
 // Bootstrap
 updateAppVh();
 loadSettings(dom);
+refreshProjectManagerUi();
 applyFeatureUI(dom);
 inspectVideoDebugState(dom, { showStatus });
 
@@ -695,13 +1148,13 @@ initTapToFocus(dom, dom.video);
 initWhiteBalance(dom);
 initQRScanner(dom);
 initPhotoComparison(dom);
-initMetadataExport(dom);
+initMetadataExport(dom, { showStatus });
 initHDRToggle(dom);
 console.log('✅ Advanced features initialized');
 
 async function bootstrap() {
   await loadPhotos(dom);
-  updateGalleryUI(dom);
+  refreshProjectManagerUi();
   checkStoredPermissionsAndBootstrap();
   setTimeout(() => inspectVideoDebugState(dom, { showStatus }), 2500);
   registerServiceWorker();
