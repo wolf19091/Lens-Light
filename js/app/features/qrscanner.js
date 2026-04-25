@@ -419,6 +419,5 @@ export function clearScanHistory() {
     updateHistoryDisplay();
 }
 
-// Note: This feature works best with the jsQR library
-// Add to index.html before closing body tag:
-// <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+// Note: jsQR is vendored locally at js/vendor/jsQR.min.js and loaded from
+// index.html so the QR scanner works fully offline.

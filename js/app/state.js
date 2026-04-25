@@ -20,7 +20,6 @@ export const state = {
     cameraFacingMode: 'environment',
     batteryMode: false,
     focusAssist: true,
-    hdrMode: false,
     timestampFormat: 'iso'
   },
 

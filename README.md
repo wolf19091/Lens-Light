@@ -1,6 +1,6 @@
 # Lens Light - Professional Survey Camera App
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/wolf19091/Lens-Light)
+[![Version](https://img.shields.io/badge/version-7.2.0-blue.svg)](https://github.com/wolf19091/Lens-Light)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 A progressive web app (PWA) for professional survey work with integrated GPS, compass, weather, and comprehensive sensor data capture.
@@ -126,7 +126,9 @@ Lens-Light/
 │   └── style.css          # Glassmorphism UI styles
 ├── js/
 │   ├── main.js            # App bootstrap & event handlers
-│   ├── script.js          # Additional utilities
+│   ├── version.js         # Single version source of truth
+│   ├── vendor/
+│   │   └── jsQR.min.js    # Vendored QR-code decoder (offline-ready)
 │   └── app/
 │       ├── state.js       # Centralized app state
 │       ├── dom.js         # DOM element references
@@ -210,6 +212,11 @@ Export photo data as CSV (Excel) or JSON:
 
 ## 📝 Version History
 
+### v7.2.0 (current)
+- 🛠️ Hardened PWA: corrected manifest icon MIME, vendored jsQR locally, removed legacy `js/script.js`
+- 🧹 Unified HDR state ownership, removed production `alert()` and debug backdoors
+- 🌐 Centralised Project panel translations through the `t()` i18n helper
+
 ### v2.0.0 (January 2026)
 - ✨ Added Tap-to-Focus with visual feedback
 - 🌡️ Added White Balance control (2000K-8000K)
@@ -242,7 +249,7 @@ This project is licensed under the MIT License.
 
 ---
 
-**Version 2.0.0** • Built with ❤️ for professional survey work • 2026
+**Version 7.2.0** • Built with ❤️ for professional survey work • 2026
 **5. Photo Comparison (30 sec)**
 - Take 2 photos → Gallery → Select → Compare (2)
 

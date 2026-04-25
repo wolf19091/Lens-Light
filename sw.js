@@ -1,20 +1,23 @@
 // Service workers can be loaded as classic scripts in some browsers/cached registrations.
 // Keep these constants local to avoid ESM import parsing failures.
-const APP_VERSION = '7.1.1';
+// NOTE: keep APP_VERSION in sync with js/version.js (single source of truth at build time).
+const APP_VERSION = '7.2.0';
 const CACHE_PREFIX = 'lenslight';
 const CACHE_NAME = `${CACHE_PREFIX}-v${APP_VERSION}`;
 
 console.log(`🔧 Service Worker v${APP_VERSION} initializing...`);
 
 // Keep this list limited to files that actually exist in the deployed folder.
-// NOTE: index.html is intentionally EXCLUDED - it's served network-first without caching
+// index.html is cached as an offline shell, but fetch still uses network-first
+// so online updates remain fresh.
 const ASSETS = [
+  './index.html',
   './manifest.json',
   './logo-max-ar-inv.svg',
   './css/style.css',
   './js/version.js',
   './js/main.js',
-  './js/script.js',
+  './js/vendor/jsQR.min.js',
   './js/app/state.js',
   './js/app/dom.js',
   './js/app/core/utils.js',
@@ -61,7 +64,9 @@ self.addEventListener('activate', (event) => {
       caches.keys().then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cache) => {
-            if (cache !== CACHE_NAME) {
+            // Only remove Lens Light caches from previous versions.
+            // Leave unrelated same-origin caches untouched.
+            if (cache.startsWith(`${CACHE_PREFIX}-`) && cache !== CACHE_NAME) {
               console.log('🗑️ Deleting old cache:', cache);
               return caches.delete(cache);
             }
@@ -88,19 +93,37 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
-  // CRITICAL: Never cache index.html to prevent stale version lock-in
-  // Always serve fresh HTML so updates work properly
+  // HTML navigation stays network-first for fresh updates, but we keep an
+  // offline shell in cache so reload works after a successful online load.
   const isHtml = url.pathname === '/' || url.pathname === '/index.html' || url.pathname.endsWith('.html');
   
   if (isHtml) {
     event.respondWith(
       fetch(event.request)
+        .then((response) => {
+          if (
+            response &&
+            response.status === 200 &&
+            event.request.method === 'GET' &&
+            (url.protocol === 'http:' || url.protocol === 'https:') &&
+            url.origin === self.location.origin
+          ) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put('./index.html', responseToCache);
+            });
+          }
+          return response;
+        })
         .catch(() => {
-          // Offline fallback: serve a minimal HTML shell if we have it cached
-          // This ensures the app works offline but updates properly when online
-          return caches.match('./index.html').then(cached => {
-            return cached || new Response('<h1>Offline</h1><p>Please check your connection.</p>', {
-              headers: { 'Content-Type': 'text/html' }
+          // Offline fallback: serve cached navigation first, then app shell.
+          return caches.match(event.request).then((cachedNavigation) => {
+            if (cachedNavigation) return cachedNavigation;
+
+            return caches.match('./index.html').then((cachedShell) => {
+              return cachedShell || new Response('<h1>Offline</h1><p>Please check your connection.</p>', {
+                headers: { 'Content-Type': 'text/html' }
+              });
             });
           });
         })
@@ -108,9 +131,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
-  // Cache CDN libraries (unpkg.com for jsQR) for offline use
-  const isCDN = url.origin.includes('unpkg.com') || url.origin.includes('cdn.jsdelivr.net');
-  
+  // jsQR is vendored locally now, but jspdf and exceljs are still lazy-loaded
+  // from cdn.jsdelivr.net on demand for the export feature. Cache them on the
+  // first successful fetch so subsequent offline exports keep working.
+  const isCDN = url.origin === 'https://cdn.jsdelivr.net';
+
   if (isCDN) {
     event.respondWith(
       caches.match(event.request).then(cached => {
@@ -124,14 +149,11 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         });
-      }).catch(() => {
-        // Offline: return cached version if available
-        return caches.match(event.request);
-      })
+      }).catch(() => caches.match(event.request))
     );
     return;
   }
-  
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {

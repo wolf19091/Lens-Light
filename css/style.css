@@ -4792,3 +4792,76 @@ body::after {
         grid-column: auto;
     }
 }
+
+/* ============================================================
+ * Utility classes (introduced to reduce inline style attributes
+ * so a future CSP tightening can drop `style-src 'unsafe-inline'`).
+ * ============================================================ */
+
+/* No !important — JS toggles `.style.display` to show, must override */
+.is-hidden { display: none; }
+
+.app-version-pill {
+    opacity: 0.6;
+    font-size: 0.85em;
+}
+
+/* Static rule-of-thirds positions for the camera grid overlay */
+.grid-line.vertical-1   { left: 33.33%; }
+.grid-line.vertical-2   { left: 66.66%; }
+.grid-line.horizontal-1 { top: 33.33%; }
+.grid-line.horizontal-2 { top: 66.66%; }
+
+/* Settings panel row — repeated 8x as inline style="display:flex;..." */
+.settings-row-flex {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Settings version readout container */
+.settings-version-row {
+    justify-content: center;
+    padding: 15px 0;
+    opacity: 0.7;
+}
+
+.settings-version-display {
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+
+.settings-clear-row {
+    border-bottom: none;
+}
+
+/* Generic button row used inside dialog headers */
+.actions-inline {
+    display: flex;
+    gap: 8px;
+}
+
+/* Export-preparation form fields */
+.export-prep-variables {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.export-prep-input {
+    width: 100%;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color, #cbd5e1);
+    background: var(--bg-secondary, #f8fafc);
+    color: var(--text-primary, #0f172a);
+    font-family: inherit;
+}
+
+.photo-viewer-comment {
+    display: none;
+    padding-top: 10px;
+    font-size: 14px;
+    color: var(--text-dim);
+}

@@ -1,4 +1,5 @@
 import { state } from '../state.js';
+import { saveSettings } from '../core/settings.js';
 
 /**
  * HDR (High Dynamic Range) Feature
@@ -201,9 +202,12 @@ export async function initHDRToggle(dom) {
         return;
     }
     
-    // Check support
-    const supported = isHDRSupported();
-    
+    // Only hard-disable if we already have an active stream and can prove the
+    // device does not support exposure compensation. At startup the camera may
+    // not be initialized yet, so don't disable prematurely.
+    const hasStream = Boolean(state.videoStream?.getVideoTracks?.()?.length);
+    const supported = hasStream ? isHDRSupported() : true;
+
     if (!supported) {
         hdrBtn.disabled = true;
         hdrBtn.style.opacity = '0.5';
@@ -212,26 +216,33 @@ export async function initHDRToggle(dom) {
         return;
     }
     
-    // Toggle HDR mode
+    // Reflect the persisted HDR state on first init (settings.js restores it
+    // onto featureState before this runs).
+    const initialEnabled = Boolean(state.featureState.hdrMode);
+    hdrBtn.classList.toggle('active', initialEnabled);
+    hdrBtn.setAttribute('aria-pressed', String(initialEnabled));
+    if (hdrToggle) hdrToggle.checked = initialEnabled;
+
+    // Toggle HDR mode (persists via saveSettings so reload restores the choice)
     hdrBtn.addEventListener('click', () => {
+        // Late capability check for flows where the camera stream starts after
+        // initHDRToggle() was called.
+        if (state.videoStream && !isHDRSupported()) {
+            hdrBtn.disabled = true;
+            hdrBtn.style.opacity = '0.5';
+            hdrBtn.title = 'HDR not supported on this camera';
+            return;
+        }
+
         const enabled = !state.featureState.hdrMode;
         state.featureState.hdrMode = enabled;
         hdrBtn.classList.toggle('active', enabled);
-        hdrBtn.setAttribute('aria-pressed', enabled);
-        
-        if (hdrToggle) {
-            hdrToggle.checked = enabled;
-        }
-        
+        hdrBtn.setAttribute('aria-pressed', String(enabled));
+
+        if (hdrToggle) hdrToggle.checked = enabled;
+
+        saveSettings();
         console.log('✨ HDR mode:', enabled ? 'enabled' : 'disabled');
-    });
-    
-    // Sync with settings toggle
-    hdrToggle?.addEventListener('change', (e) => {
-        const enabled = e.target.checked;
-        state.featureState.hdrMode = enabled;
-        hdrBtn.classList.toggle('active', enabled);
-        hdrBtn.setAttribute('aria-pressed', enabled);
     });
     
     console.log('✅ HDR feature initialized');

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($file = \"c:\\\\Users\\\\wolf5\\\\OneDrive\\\\سطح المكتب\\\\مشاريع\\\\LENS LIGHT\\\\js\\\\vendor\\\\jsQR.min.js\"; \\(Get-Content $file -TotalCount 1\\).Substring\\(0, [Math]::Min\\(160, \\(Get-Content $file -TotalCount 1\\).Length\\)\\))",
+      "Bash(node --check \"c:/Users/wolf5/OneDrive/سطح المكتب/مشاريع/LENS LIGHT/js/main.js\")",
+      "Bash(node --check \"c:/Users/wolf5/OneDrive/سطح المكتب/مشاريع/LENS LIGHT/js/app/state.js\")",
+      "Bash(node --check \"c:/Users/wolf5/OneDrive/سطح المكتب/مشاريع/LENS LIGHT/js/app/core/i18n.js\")",
+      "Bash(node --check \"c:/Users/wolf5/OneDrive/سطح المكتب/مشاريع/LENS LIGHT/js/app/core/settings.js\")",
+      "Bash(node --check \"c:/Users/wolf5/OneDrive/سطح المكتب/مشاريع/LENS LIGHT/js/app/features/hdr.js\")"
+    ]
+  }
+}

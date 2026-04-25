@@ -9,9 +9,20 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#001F5E">
     <meta name="description" content="Professional camera app for survey and field work with GPS, compass, and sensor integration">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data: https:; connect-src 'self' https://nominatim.openstreetmap.org https://geocode.maps.co https://api.open-meteo.com https://api.bigdatacloud.net https://api-bdc.io https://cdn.jsdelivr.net; worker-src 'self'; manifest-src 'self'">
+    <!--
+      Content Security Policy notes:
+      - script-src allows cdn.jsdelivr.net so the PDF export (jspdf) and Excel
+        export (exceljs) features can lazy-load on demand. jsQR is now vendored
+        locally and does not need a CDN. These export libs are large and only
+        run when the user clicks Export, so we accept the online dependency.
+      - style-src keeps 'unsafe-inline' because the JS uses element.style.X
+        assignments (and a CSS animation injected via element.style.cssText for
+        the double-tap ripple). Removing it would require a sweeping JS refactor.
+        All static inline style="" attributes have been moved to css/style.css.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data:; connect-src 'self' https://nominatim.openstreetmap.org https://geocode.maps.co https://api.open-meteo.com https://api.bigdatacloud.net https://api-bdc.io https://cdn.jsdelivr.net; worker-src 'self'; manifest-src 'self'">
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" type="image/png" href="logo-max-ar-inv.svg">
+    <link rel="icon" type="image/svg+xml" href="logo-max-ar-inv.svg">
     <link rel="apple-touch-icon" href="logo-max-ar-inv.svg">
     <title>LIGHT LENS - Survey Camera</title>
     <link rel="stylesheet" href="css/style.css">
@@ -30,10 +41,10 @@
     
     <!-- Grid Overlay -->
     <div id="grid-overlay" class="active" aria-hidden="true">
-        <div class="grid-line vertical" style="left: 33.33%"></div>
-        <div class="grid-line vertical" style="left: 66.66%"></div>
-        <div class="grid-line horizontal" style="top: 33.33%"></div>
-        <div class="grid-line horizontal" style="top: 66.66%"></div>
+        <div class="grid-line vertical vertical-1"></div>
+        <div class="grid-line vertical vertical-2"></div>
+        <div class="grid-line horizontal horizontal-1"></div>
+        <div class="grid-line horizontal horizontal-2"></div>
     </div>
 
     <!-- Level Indicator -->
@@ -59,12 +70,12 @@
             <img src="logo-max-ar-inv.svg" alt="Lens Light Logo" class="app-logo" width="42" height="42">
             <div class="topbar-text">
                 <div class="app-title">Lens Light</div>
-                <div class="app-subtitle">Survey capture <span id="app-version" style="opacity: 0.6; font-size: 0.85em;"></span></div>
+                <div class="app-subtitle">Survey capture <span id="app-version" class="app-version-pill"></span></div>
             </div>
         </div>
         <div class="topbar-right">
-            <span class="pill warning" id="battery-mode-indicator" style="display:none;" aria-label="Battery Saving Mode">🔋 SAVER</span>
-            <span class="pill" id="active-project-badge" style="display:none;" aria-label="Active project"></span>
+            <span class="pill warning is-hidden" id="battery-mode-indicator" aria-label="Battery Saving Mode">🔋 SAVER</span>
+            <span class="pill is-hidden" id="active-project-badge" aria-label="Active project"></span>
             <span class="pill" id="ui-badge">LIVE</span>
         </div>
     </div>
@@ -160,15 +171,15 @@
     <div id="controls" role="toolbar" aria-label="Main camera controls">
         <button id="gallery-btn" aria-label="Open gallery" type="button">
             📷
-            <span id="photo-count" style="display: none;" aria-label="Photo count">0</span>
+            <span id="photo-count" class="is-hidden" aria-label="Photo count">0</span>
         </button>
         <button id="project-btn" title="Project tools" aria-label="Project tools" aria-haspopup="dialog" type="button">🗂️</button>
         <button id="shutter-btn" aria-label="Take photo" type="button" class="disabled"></button>
         <button id="settings-btn" aria-label="Settings" type="button">⚙️</button>
         <button id="flip-camera-btn" title="Switch Camera" aria-label="Switch camera" type="button">🔄</button>
         <button id="share-btn" aria-label="Share photo" type="button">📤</button>
-        <input type="file" id="file-input" accept="image/*" style="display: none;" aria-hidden="true">
-        <input type="file" id="project-photo-input" accept="image/*" multiple style="display: none;" aria-hidden="true">
+        <input type="file" id="file-input" accept="image/*" class="is-hidden" aria-hidden="true">
+        <input type="file" id="project-photo-input" accept="image/*" multiple class="is-hidden" aria-hidden="true">
     </div>
 
     <!-- Settings Panel -->
@@ -205,7 +216,7 @@
         </div>
 
         <div class="setting-item">
-            <label style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="settings-row-flex">
                 <span id="label-show-compass">🗺️ Show Compass Overlay</span>
                 <label class="toggle-switch">
                     <input type="checkbox" id="toggle-compass" checked aria-label="Show compass overlay">
@@ -215,7 +226,7 @@
         </div>
 
         <div class="setting-item">
-            <label style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="settings-row-flex">
                 <span id="label-show-data">📊 Show Data Overlay</span>
                 <label class="toggle-switch">
                     <input type="checkbox" id="toggle-data" checked aria-label="Show data overlay">
@@ -234,7 +245,7 @@
         </div>
         
         <div class="setting-item">
-            <label style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="settings-row-flex">
                 <span id="label-watermark">💧 Add Watermark (GPS/Time)</span>
                 <label class="toggle-switch">
                     <input type="checkbox" id="toggle-watermark" aria-label="Add watermark">
@@ -244,7 +255,7 @@
         </div>
         
         <div class="setting-item">
-            <label style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="settings-row-flex">
                 <span id="label-camera-sound">🔊 Camera Sound</span>
                 <label class="toggle-switch">
                     <input type="checkbox" id="toggle-sound" checked aria-label="Camera sound">
@@ -254,7 +265,7 @@
         </div>
 
         <div class="setting-item">
-            <label style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="settings-row-flex">
                 <span id="label-battery-mode">🔋 Battery Saver</span>
                 <label class="toggle-switch">
                     <input type="checkbox" id="toggle-battery" aria-label="Battery saver mode">
@@ -274,7 +285,7 @@
         </div>
         
         <div class="setting-item">
-            <label style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="settings-row-flex">
                 <span id="label-hdr">✨ HDR Mode</span>
                 <label class="toggle-switch">
                     <input type="checkbox" id="toggle-hdr" aria-label="HDR mode">
@@ -284,7 +295,7 @@
         </div>
         
         <div class="setting-item">
-            <label style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="settings-row-flex">
                 <span id="label-focus-assist">🎯 Focus Assist</span>
                 <label class="toggle-switch">
                     <input type="checkbox" id="toggle-focus-assist" checked aria-label="Focus assist">
@@ -294,7 +305,7 @@
         </div>
         
         <div class="setting-item">
-            <label style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="settings-row-flex">
                 <span id="label-debug-mode">🐛 Debug Logging (Console)</span>
                 <label class="toggle-switch">
                     <input type="checkbox" id="toggle-debug-mode" aria-label="Debug logging">
@@ -303,13 +314,13 @@
             </label>
         </div>
 
-        <div class="setting-item" style="justify-content: center; padding: 15px 0; opacity: 0.7;">
-            <div id="settings-version-display" style="font-size: 0.9em; color: var(--text-secondary);">
+        <div class="setting-item settings-version-row">
+            <div id="settings-version-display" class="settings-version-display">
                 Lens Light v<span id="settings-version-number">--</span>
             </div>
         </div>
-        
-        <div class="setting-item" style="border-bottom: none;">
+
+        <div class="setting-item settings-clear-row">
             <button class="clear-data-btn" id="clear-all-data-btn" type="button">
                 <span id="label-clear-data">🗑️ Clear All Data</span>
             </button>
@@ -357,13 +368,13 @@
     <div id="gallery-modal" role="dialog" aria-labelledby="gallery-title" aria-hidden="true">
         <div class="gallery-header">
             <h2 id="gallery-title"><span id="gallery-title-text">📷 Gallery</span> (<span id="gallery-count">0</span>)</h2>
-            <div style="display: flex; gap: 8px;">
+            <div class="actions-inline">
                 <button class="action-btn" id="export-metadata-btn" type="button">Prepare Export</button>
-                <button class="action-btn" id="select-mode-btn" style="display: none;" type="button">Select</button>
+                <button class="action-btn is-hidden" id="select-mode-btn" type="button">Select</button>
                 <button class="close-btn" id="close-gallery" aria-label="Close gallery" type="button">Close</button>
             </div>
         </div>
-        <div class="gallery-actions" id="gallery-actions" style="display: none;" role="toolbar" aria-label="Gallery actions">
+        <div class="gallery-actions is-hidden" id="gallery-actions" role="toolbar" aria-label="Gallery actions">
             <button class="action-btn" id="select-all-btn" type="button">Select All</button>
             <button class="action-btn" id="share-selected-btn" type="button">📤 Share Selected</button>
             <button class="action-btn" id="download-selected-btn" type="button">💾 Save Selected</button>
@@ -393,10 +404,10 @@
         </div>
 
         <div class="export-prep-options">
-            <div class="export-prep-variables" style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;">
-                <input type="text" id="export-var-title" placeholder="Report Title" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: var(--bg-secondary, #f8fafc); color: var(--text-primary, #0f172a); font-family: inherit;">
-                <input type="text" id="export-var-org" placeholder="Organization" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: var(--bg-secondary, #f8fafc); color: var(--text-primary, #0f172a); font-family: inherit;">
-                <input type="text" id="export-var-prepared" placeholder="Prepared By" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: var(--bg-secondary, #f8fafc); color: var(--text-primary, #0f172a); font-family: inherit;">
+            <div class="export-prep-variables">
+                <input type="text" id="export-var-title" class="export-prep-input" placeholder="Report Title">
+                <input type="text" id="export-var-org" class="export-prep-input" placeholder="Organization">
+                <input type="text" id="export-var-prepared" class="export-prep-input" placeholder="Prepared By">
             </div>
             <label class="export-prep-option"><input type="checkbox" id="export-option-logo" checked> <span>Include logo</span></label>
             <label class="export-prep-option"><input type="checkbox" id="export-option-images" checked> <span>Include images</span></label>
@@ -423,17 +434,17 @@
     <div id="qr-scanner" role="dialog" aria-labelledby="qr-scanner-title" aria-hidden="true">
         <div class="gallery-header">
             <h2 id="qr-scanner-title">⊡ QR Code Scanner</h2>
-            <div style="display: flex; gap: 8px;">
+            <div class="actions-inline">
                 <button class="action-btn" id="qr-flashlight-toggle" title="Toggle flashlight" aria-label="Toggle flashlight" type="button">🔦</button>
                 <button class="close-btn" id="close-qr-scanner" aria-label="Close QR scanner" type="button">Close</button>
             </div>
         </div>
         <div id="qr-scanner-viewport">
-            <canvas id="qr-canvas" style="display:none;"></canvas>
+            <canvas id="qr-canvas" class="is-hidden"></canvas>
             <div class="qr-scan-frame">
                 <div class="qr-scan-line"></div>
             </div>
-            <div id="qr-result" style="display:none;"></div>
+            <div id="qr-result" class="is-hidden"></div>
         </div>
         <div id="qr-history-panel">
             <div class="qr-history-header">Recent Scans</div>
@@ -465,13 +476,13 @@
         <img id="photo-viewer-bg-img" alt="" aria-hidden="true" />
         <div class="gallery-header">
             <h2 id="photo-viewer-title">🖼️ Photo</h2>
-            <div style="display: flex; gap: 8px;">
+            <div class="actions-inline">
                 <button class="close-btn" id="close-photo-viewer" aria-label="Close photo viewer" type="button">Close</button>
             </div>
         </div>
         <div class="photo-viewer-body">
             <img id="photo-viewer-img" alt="Photo preview" />
-            <div id="photo-viewer-comment" style="display:none; padding-top: 10px; font-size: 14px; color: var(--text-dim);"></div>
+            <div id="photo-viewer-comment" class="photo-viewer-comment"></div>
         </div>
         <div class="photo-viewer-actions" role="toolbar" aria-label="Photo actions">
             <button class="action-btn" id="viewer-share-btn" type="button">📤 Share</button>
@@ -482,11 +493,10 @@
     </div>
 
     <!-- Hidden Canvas for Image Processing -->
-    <canvas id="hidden-canvas" style="display:none;" aria-hidden="true"></canvas>
+    <canvas id="hidden-canvas" class="is-hidden" aria-hidden="true"></canvas>
 
-    <!-- QR Code Scanner Library -->
-    <!-- Using jsdelivr for better reliability and avoiding tracking prevention blocks on unpkg -->
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js" defer></script>
+    <!-- QR Code Scanner Library (vendored from jsqr@1.4.0 for reliable offline support) -->
+    <script src="js/vendor/jsQR.min.js" defer></script>
 
     <script type="module" src="js/main.js" defer></script>
 </body>

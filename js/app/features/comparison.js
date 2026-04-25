@@ -1,9 +1,29 @@
 import { dbGetPhoto } from '../storage/photoDb.js';
+import { state } from '../state.js';
+import { showStatus as showStatusBanner } from '../core/status.js';
 
 /**
  * Photo Comparison Feature
  * Side-by-side comparison of two photos
  */
+
+function notify(message, duration = 2500) {
+    if (typeof showStatusBanner === 'function') {
+        try {
+            showStatusBanner(message, duration);
+            return;
+        } catch {}
+    }
+    const el = document.getElementById('status-msg');
+    if (!el) return;
+    el.textContent = String(message);
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), duration);
+}
+
+function tr(en, ar) {
+    return state.currentLang === 'ar' ? ar : en;
+}
 
 export function initPhotoComparison(dom) {
     const comparisonMode = document.getElementById('comparison-mode');
@@ -22,7 +42,7 @@ export function initPhotoComparison(dom) {
         const selected = Array.from(document.querySelectorAll('.gallery-item.selected'));
         
         if (selected.length !== 2) {
-            alert('Please select exactly 2 photos to compare');
+            notify(tr('⚠️ Please select exactly 2 photos to compare', '⚠️ اختر صورتين بالضبط للمقارنة'), 2500);
             return;
         }
         
@@ -36,7 +56,7 @@ export function initPhotoComparison(dom) {
             const photo2 = await dbGetPhoto(photoId2);
             
             if (!photo1 || !photo2) {
-                alert('Error loading photos');
+                notify(tr('❌ Error loading photos', '❌ تعذر تحميل الصور'), 2500);
                 return;
             }
             
@@ -60,7 +80,7 @@ export function initPhotoComparison(dom) {
             comparisonMode._photoUrls = [url1, url2];
         } catch (err) {
             console.error('Error loading photos for comparison:', err);
-            alert('Failed to load photos');
+            notify(tr('❌ Failed to load photos', '❌ فشل تحميل الصور'), 3000);
         }
     });
     

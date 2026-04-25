@@ -5,7 +5,11 @@ import { APP_VERSION } from '../../version.js';
 
 export function saveSettings() {
   try {
-    localStorage.setItem(state.SETTINGS_KEY, JSON.stringify(state.settings));
+    // HDR is owned by featureState.hdrMode (the runtime authority used by the
+    // capture pipeline). We persist it alongside the user-facing settings so
+    // the toggle is restored on reload, but we don't store it on `state.settings`.
+    const persisted = { ...state.settings, hdrMode: Boolean(state.featureState.hdrMode) };
+    localStorage.setItem(state.SETTINGS_KEY, JSON.stringify(persisted));
   } catch (e) {
     console.warn('saveSettings failed', e);
   }
@@ -14,7 +18,16 @@ export function saveSettings() {
 export function loadSettings(dom) {
   try {
     const raw = localStorage.getItem(state.SETTINGS_KEY);
-    if (raw) state.settings = { ...state.settings, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Restore HDR onto the runtime authority (featureState) and strip it from
+      // the persisted-settings copy to avoid two sources of truth in memory.
+      if (Object.prototype.hasOwnProperty.call(parsed, 'hdrMode')) {
+        state.featureState.hdrMode = Boolean(parsed.hdrMode);
+        delete parsed.hdrMode;
+      }
+      state.settings = { ...state.settings, ...parsed };
+    }
   } catch (e) {
     console.warn('loadSettings failed', e);
   }
@@ -46,7 +59,7 @@ export function loadSettings(dom) {
   const toggleDebugMode = document.getElementById('toggle-debug-mode');
   const timestampFormat = document.getElementById('timestamp-format');
   
-  if (toggleHdr) toggleHdr.checked = Boolean(state.settings.hdrMode);
+  if (toggleHdr) toggleHdr.checked = Boolean(state.featureState.hdrMode);
   if (toggleFocusAssist) toggleFocusAssist.checked = state.settings.focusAssist !== false;
   if (toggleDebugMode) toggleDebugMode.checked = localStorage.getItem('debug_mode') === 'true';
   if (timestampFormat) timestampFormat.value = state.settings.timestampFormat || 'iso';
@@ -146,8 +159,13 @@ export function bindSettingsUi(dom, { showStatus, updateWeatherDisplay, renderGa
   const timestampFormat = document.getElementById('timestamp-format');
   
   toggleHdr?.addEventListener('change', (e) => {
-    state.settings.hdrMode = e.target.checked;
     state.featureState.hdrMode = e.target.checked;
+    // Mirror to the bottom-bar HDR button so the two UI surfaces stay in sync.
+    const hdrBtn = document.getElementById('hdr-btn');
+    if (hdrBtn) {
+      hdrBtn.classList.toggle('active', e.target.checked);
+      hdrBtn.setAttribute('aria-pressed', String(e.target.checked));
+    }
     saveSettings();
   });
   

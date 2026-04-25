@@ -1,7 +1,7 @@
-import { getDom } from './app/dom.js';
+﻿import { getDom } from './app/dom.js';
 import { state } from './app/state.js';
 import { createStatus } from './app/core/status.js';
-import { t, setLanguage } from './app/core/i18n.js';
+import { t, tFmt, setLanguage } from './app/core/i18n.js';
 import { loadSettings, saveSettings, bindSettingsUi } from './app/core/settings.js';
 import { applyFeatureUI } from './app/ui/features.js';
 import { updateAppVh } from './app/ui/viewport.js';
@@ -86,7 +86,20 @@ function warnIfElementCovered(el) {
   console.warn('shutter element may be covered by', topEl);
 }
 
-function inspectVideoDebugState(dom, { showStatus } = {}) {
+// Diagnostic tooling — only runs when the user explicitly enables Debug Logging
+// in Settings (sets localStorage.debug_mode = 'true'). The third-party test-video
+// fallback is fully removed: it broke offline behaviour and only existed to
+// validate the <video> render path during development.
+function isDebugModeEnabled() {
+  try {
+    return localStorage.getItem('debug_mode') === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function inspectVideoDebugState(dom) {
+  if (!isDebugModeEnabled()) return;
   const video = dom?.video;
   if (!video) return;
 
@@ -128,25 +141,8 @@ function inspectVideoDebugState(dom, { showStatus } = {}) {
     video.__debugErrorListenerAdded = true;
   }
 
-  // Investigation notes:
-  // - The <video id="video"> markup has no src attribute and no <source> children by default.
-  // - This app is designed to feed the video via srcObject from getUserMedia in initCamera().
-  // - If src/srcObject is missing and readyState stays 0, camera stream wiring likely failed.
   if (!video.srcObject && !srcAttr && sourceValues.length === 0 && video.readyState === 0) {
     console.warn('⚠️ Video has no source and readyState is 0. Check camera stream connection (getUserMedia/srcObject).');
-
-    // Optional debug fallback: set localStorage.debug_video_test_src = 'true' to test rendering pipeline
-    // without using camera stream. Disabled by default to avoid changing production behavior.
-    if (localStorage.getItem('debug_video_test_src') === 'true') {
-      const testUrl = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
-      video.src = testUrl;
-      video.load();
-      video.play().then(() => {
-        showStatus?.('🎬 Debug video source loaded', 2200);
-      }).catch((e) => {
-        console.error('❌ Dummy debug video play failed', e);
-      });
-    }
   }
 }
 
@@ -183,44 +179,6 @@ function checkStoredPermissionsAndBootstrap() {
 // Gallery observer
 const galleryObserver = createGalleryObserver(dom);
 
-function getProjectUiText() {
-  if (state.currentLang === 'ar') {
-    return {
-      buttonLabel: 'أدوات المشروع',
-      panelTitle: '🗂️ المشروع',
-      nameLabel: '📝 اسم المشروع',
-      placeholder: 'مثال: مسح الموقع 2026',
-      copy: 'أنشئ اسم المشروع أو حدّثه، ثم أضف صوراً من جهازك إلى هذا المشروع.',
-      save: 'حفظ المشروع',
-      addPhotos: '➕ إضافة صور',
-      close: 'إغلاق',
-      projectSaved: '✓ تم حفظ المشروع',
-      projectCleared: '✓ تم مسح اسم المشروع',
-      projectNameRequired: '⚠️ أدخل اسم المشروع أولاً',
-      noImagesSelected: '⚠️ اختر صورة واحدة على الأقل',
-      importFailed: '❌ تعذر إضافة الصور',
-      addedCount: (count) => `✓ تمت إضافة ${count} صورة إلى المشروع`
-    };
-  }
-
-  return {
-    buttonLabel: 'Project tools',
-    panelTitle: '🗂️ Project',
-    nameLabel: '📝 Project Name',
-    placeholder: 'e.g., Site Survey 2026',
-    copy: 'Create or update the project name, then add photos from your device to this project.',
-    save: 'Save Project',
-    addPhotos: '➕ Add Photos',
-    close: 'Close',
-    projectSaved: '✓ Project saved',
-    projectCleared: '✓ Project cleared',
-    projectNameRequired: '⚠️ Enter a project name first',
-    noImagesSelected: '⚠️ Select at least one image',
-    importFailed: '❌ Failed to add photos',
-    addedCount: (count) => `✓ Added ${count} photo(s) to project`
-  };
-}
-
 function syncProjectInputs(projectName = state.settings.projectName || '') {
   if (dom.projectNameInput) dom.projectNameInput.value = projectName;
   if (dom.projectPanelNameInput) dom.projectPanelNameInput.value = projectName;
@@ -228,29 +186,30 @@ function syncProjectInputs(projectName = state.settings.projectName || '') {
 }
 
 function applyProjectUiText() {
-  const text = getProjectUiText();
   const activeProject = getActiveProjectName();
+  const buttonLabel = t('projectButtonLabel');
+  const closeLabel = t('projectClose');
 
   if (dom.projectBtn) {
-    dom.projectBtn.title = text.buttonLabel;
-    dom.projectBtn.setAttribute('aria-label', text.buttonLabel);
+    dom.projectBtn.title = buttonLabel;
+    dom.projectBtn.setAttribute('aria-label', buttonLabel);
   }
 
-  if (dom.projectPanelTitle) dom.projectPanelTitle.textContent = projectText('panelTitle');
-  if (dom.projectPanelNameLabel) dom.projectPanelNameLabel.textContent = text.nameLabel;
-  if (dom.projectPanelNameInput) dom.projectPanelNameInput.placeholder = text.placeholder;
-  if (dom.projectPanelCopy) dom.projectPanelCopy.textContent = projectText('copy');
-  if (dom.projectCurrentLabel) dom.projectCurrentLabel.textContent = activeProject ? projectText('activeProjectLabel') : projectText('noProjectOpen');
-  if (dom.projectCurrentName) dom.projectCurrentName.textContent = activeProject || projectText('noProjectHint');
-  if (dom.openProjectBtn) dom.openProjectBtn.textContent = projectText('openProject');
-  if (dom.takeProjectPhotoBtn) dom.takeProjectPhotoBtn.textContent = projectText('takePhoto');
-  if (dom.openProjectGalleryBtn) dom.openProjectGalleryBtn.textContent = projectText('openPhotos');
-  if (dom.addProjectPhotoBtn) dom.addProjectPhotoBtn.textContent = projectText('addPhotos');
-  if (dom.closeActiveProjectBtn) dom.closeActiveProjectBtn.textContent = projectText('closeProject');
-  if (dom.projectListTitle) dom.projectListTitle.textContent = projectText('projectFiles');
+  if (dom.projectPanelTitle) dom.projectPanelTitle.textContent = t('projectPanelTitle');
+  if (dom.projectPanelNameLabel) dom.projectPanelNameLabel.textContent = t('projectNameLabel');
+  if (dom.projectPanelNameInput) dom.projectPanelNameInput.placeholder = t('projectPlaceholder');
+  if (dom.projectPanelCopy) dom.projectPanelCopy.textContent = t('projectCopy');
+  if (dom.projectCurrentLabel) dom.projectCurrentLabel.textContent = activeProject ? t('projectActiveLabel') : t('projectNoneOpen');
+  if (dom.projectCurrentName) dom.projectCurrentName.textContent = activeProject || t('projectNoneHint');
+  if (dom.openProjectBtn) dom.openProjectBtn.textContent = t('projectOpenAction');
+  if (dom.takeProjectPhotoBtn) dom.takeProjectPhotoBtn.textContent = t('projectTakePhoto');
+  if (dom.openProjectGalleryBtn) dom.openProjectGalleryBtn.textContent = t('projectOpenPhotos');
+  if (dom.addProjectPhotoBtn) dom.addProjectPhotoBtn.textContent = t('projectAddPhotos');
+  if (dom.closeActiveProjectBtn) dom.closeActiveProjectBtn.textContent = t('projectCloseAction');
+  if (dom.projectListTitle) dom.projectListTitle.textContent = t('projectFiles');
   if (dom.closeProjectPanelBtn) {
-    dom.closeProjectPanelBtn.textContent = text.close;
-    dom.closeProjectPanelBtn.setAttribute('aria-label', text.close);
+    dom.closeProjectPanelBtn.textContent = closeLabel;
+    dom.closeProjectPanelBtn.setAttribute('aria-label', closeLabel);
   }
 }
 
@@ -271,59 +230,6 @@ function closeProjectPanel() {
   dom.projectPanel?.classList.remove('open');
   dom.projectPanel?.setAttribute('aria-hidden', 'true');
   if (!isTouchPrimaryInput()) dom.projectBtn?.focus?.();
-}
-
-function projectText(key, value) {
-  const isAr = state.currentLang === 'ar';
-
-  switch (key) {
-    case 'panelTitle':
-      return isAr ? '\uD83D\uDCC2 \u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639' : '🗂️ Projects';
-    case 'copy':
-      return isAr
-        ? '\u0627\u0641\u062A\u062D \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0643\u0645\u0644\u0641\u060C \u062B\u0645 \u0627\u0644\u062A\u0642\u0637 \u0635\u0648\u0631\u0627\u064B \u0623\u0648 \u0623\u0636\u0641\u0647\u0627 \u0625\u0644\u0649 \u0647\u0630\u0627 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0641\u0642\u0637.'
-        : 'Open a project like a file, then take photos, add photos, or open only that project\'s gallery.';
-    case 'openProject':
-      return isAr ? '\u0627\u0641\u062A\u062D \u0627\u0644\u0645\u0634\u0631\u0648\u0639' : 'Open Project';
-    case 'takePhoto':
-      return isAr ? '\uD83D\uDCF8 \u0627\u0644\u062A\u0642\u0637 \u0635\u0648\u0631\u0629' : '📸 Take Photo';
-    case 'openPhotos':
-      return isAr ? '\uD83D\uDDBC\uFE0F \u0627\u0641\u062A\u062D \u0627\u0644\u0635\u0648\u0631' : '🖼️ Open Photos';
-    case 'addPhotos':
-      return isAr ? '\u2795 \u0625\u0636\u0627\u0641\u0629 \u0635\u0648\u0631' : '➕ Add Photos';
-    case 'closeProject':
-      return isAr ? '\u0625\u063A\u0644\u0627\u0642 \u0627\u0644\u0645\u0634\u0631\u0648\u0639' : 'Close Project';
-    case 'projectFiles':
-      return isAr ? '\u0645\u0644\u0641\u0627\u062A \u0627\u0644\u0645\u0634\u0631\u0648\u0639' : 'Project Files';
-    case 'noProjectOpen':
-      return isAr ? '\u0644\u0627 \u064A\u0648\u062C\u062F \u0645\u0634\u0631\u0648\u0639 \u0645\u0641\u062A\u0648\u062D' : 'No project open';
-    case 'noProjectHint':
-      return isAr
-        ? '\u0627\u0641\u062A\u062D \u0623\u0648 \u0623\u0646\u0634\u0626 \u0645\u0634\u0631\u0648\u0639\u0627\u064B \u0644\u0628\u062F\u0621 \u0627\u0644\u062A\u0642\u0627\u0637 \u0627\u0644\u0635\u0648\u0631 \u0648\u0625\u0636\u0627\u0641\u062A\u0647\u0627.'
-        : 'Open or create a project to start taking and adding photos.';
-    case 'activeProjectLabel':
-      return isAr ? '\u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0645\u0641\u062A\u0648\u062D' : 'Open project';
-    case 'projectNameRequired':
-      return isAr ? '\u26A0\uFE0F \u0623\u062F\u062E\u0644 \u0627\u0633\u0645 \u0627\u0644\u0645\u0634\u0631\u0648\u0639 \u0623\u0648\u0644\u0627\u064B' : '⚠️ Enter a project name first';
-    case 'noSavedProjects':
-      return isAr ? '\u0644\u0627 \u062A\u0648\u062C\u062F \u0645\u0634\u0627\u0631\u064A\u0639 \u0628\u0639\u062F.' : 'No project files yet.';
-    case 'projectOpened':
-      return isAr ? `\u2713 \u062A\u0645 \u0641\u062A\u062D ${value}` : `✓ Opened ${value}`;
-    case 'projectClosed':
-      return isAr ? '\u2713 \u062A\u0645 \u0625\u063A\u0644\u0627\u0642 \u0627\u0644\u0645\u0634\u0631\u0648\u0639' : '✓ Project closed';
-    case 'projectFileMeta':
-      return isAr ? `${value} \u0635\u0648\u0631\u0629` : `${value} photo(s)`;
-    case 'readyForCapture':
-      return isAr ? `\uD83D\uDCF8 ${value} \u062C\u0627\u0647\u0632 \u0644\u0644\u0627\u0644\u062A\u0642\u0627\u0637` : `📸 ${value} ready for capture`;
-    case 'noImagesSelected':
-      return isAr ? '\u26A0\uFE0F \u0627\u062E\u062A\u0631 \u0635\u0648\u0631\u0629 \u0648\u0627\u062D\u062F\u0629 \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644' : '⚠️ Select at least one image';
-    case 'importFailed':
-      return isAr ? '\u274C \u062A\u0639\u0630\u0631 \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0635\u0648\u0631' : '❌ Failed to add photos';
-    case 'addedCount':
-      return isAr ? `\u2713 \u062A\u0645\u062A \u0625\u0636\u0627\u0641\u0629 ${value} \u0635\u0648\u0631\u0629 \u0625\u0644\u0649 \u0627\u0644\u0645\u0634\u0631\u0648\u0639` : `✓ Added ${value} photo(s) to project`;
-    default:
-      return '';
-  }
 }
 
 function getProjectFiles() {
@@ -384,7 +290,7 @@ function renderProjectFiles() {
   if (files.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'project-list-empty';
-    empty.textContent = projectText('noSavedProjects');
+    empty.textContent = t('projectNoSaved');
     dom.projectList.appendChild(empty);
     return;
   }
@@ -410,7 +316,7 @@ function renderProjectFiles() {
 
     const meta = document.createElement('span');
     meta.className = 'project-file-meta';
-    meta.textContent = projectText('projectFileMeta', getProjectPhotoCount(name));
+    meta.textContent = tFmt('projectFileMeta', { count: getProjectPhotoCount(name) });
 
     body.appendChild(title);
     body.appendChild(meta);
@@ -438,7 +344,7 @@ window.addEventListener(PHOTOS_CHANGED_EVENT, () => {
 function openProjectFile(projectName, { announce = true, closePanelAfter = false } = {}) {
   const nextProject = sanitizeInput(projectName).trim();
   if (!nextProject) {
-    showStatus(projectText('projectNameRequired'), 2200);
+    showStatus(t('projectNameRequired'), 2200);
     dom.projectPanelNameInput?.focus?.();
     return null;
   }
@@ -453,7 +359,7 @@ function openProjectFile(projectName, { announce = true, closePanelAfter = false
     renderGallery(dom, galleryObserver, { showStatus });
   }
 
-  if (announce) showStatus(projectText('projectOpened', nextProject), 1800);
+  if (announce) showStatus(tFmt('projectOpened', { name: nextProject }), 1800);
   if (closePanelAfter) closeProjectPanel();
   return nextProject;
 }
@@ -470,7 +376,7 @@ function closeProjectFile({ announce = true } = {}) {
     renderGallery(dom, galleryObserver, { showStatus });
   }
 
-  if (announce) showStatus(projectText('projectClosed'), 1800);
+  if (announce) showStatus(t('projectClosed'), 1800);
 }
 
 function openActiveProjectGallery() {
@@ -495,14 +401,14 @@ function armActiveProjectForCapture() {
   });
   if (!activeProject) return;
 
-  showStatus(projectText('readyForCapture', activeProject), 1800);
+  showStatus(tFmt('projectReadyForCapture', { name: activeProject }), 1800);
   if (!isTouchPrimaryInput()) dom.shutterBtn?.focus?.();
 }
 
 async function importIntoActiveProject(fileList) {
   const files = Array.from(fileList || []).filter((file) => file && String(file.type || '').startsWith('image/'));
   if (files.length === 0) {
-    showStatus(projectText('noImagesSelected'), 2200);
+    showStatus(t('projectNoImagesSelected'), 2200);
     return;
   }
 
@@ -551,7 +457,7 @@ async function importIntoActiveProject(fileList) {
   if (dom.projectPhotoInput) dom.projectPhotoInput.value = '';
 
   if (!importedCount) {
-    showStatus(projectText('importFailed'), 3000);
+    showStatus(t('projectImportFailed'), 3000);
     return;
   }
 
@@ -566,7 +472,7 @@ async function importIntoActiveProject(fileList) {
     renderGallery(dom, galleryObserver, { showStatus });
   }
 
-  showStatus(projectText('addedCount', importedCount), 2200);
+  showStatus(tFmt('projectAddedCount', { count: importedCount }), 2200);
 }
 
 // Double-tap to flip camera
@@ -703,8 +609,15 @@ if (dom.shutterBtn) {
     }
   });
 } else {
-  alert('❌ ERROR: Shutter button NOT FOUND!');
+  // Shutter button is critical to the app's purpose; surface the failure via
+  // the non-blocking status banner and keep the rest of the UI usable.
   console.error('❌ Shutter button NOT FOUND in DOM');
+  showStatus(
+    state.currentLang === 'ar'
+      ? '❌ زر الالتقاط غير متوفر — أعد تحميل التطبيق'
+      : '❌ Shutter button missing — please reload the app',
+    6000
+  );
 }
 
 // Flip camera
@@ -1134,7 +1047,7 @@ updateAppVh();
 loadSettings(dom);
 refreshProjectManagerUi();
 applyFeatureUI(dom);
-inspectVideoDebugState(dom, { showStatus });
+inspectVideoDebugState(dom);
 
 // Display version in UI
 const versionEl = document.getElementById('app-version');
@@ -1156,7 +1069,7 @@ async function bootstrap() {
   await loadPhotos(dom);
   refreshProjectManagerUi();
   checkStoredPermissionsAndBootstrap();
-  setTimeout(() => inspectVideoDebugState(dom, { showStatus }), 2500);
+  setTimeout(() => inspectVideoDebugState(dom), 2500);
   registerServiceWorker();
 }
 
