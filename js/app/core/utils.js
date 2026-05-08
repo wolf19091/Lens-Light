@@ -1,5 +1,19 @@
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Whether the device's primary input is a touchscreen (used to skip focus moves). */
+export function isTouchPrimaryInput() {
+  return Boolean(
+    window.matchMedia?.('(pointer: coarse)')?.matches ||
+    window.matchMedia?.('(hover: none)')?.matches ||
+    navigator.maxTouchPoints > 0
+  );
+}
+
+export const isDebugModeEnabled = () => {
+  try { return localStorage.getItem('debug_mode') === 'true'; }
+  catch { return false; }
+};
+
 export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -48,14 +62,39 @@ export function createGoogleMapsUrl(lat, lon) {
   return `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`;
 }
 
+export function createShortAddress(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return '';
+
+  const source = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+  let hash = 2166136261;
+
+  for (let i = 0; i < source.length; i += 1) {
+    hash ^= source.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+
+  let letterValue = hash % 456976; // 26^4
+  let letters = '';
+  for (let i = 0; i < 4; i += 1) {
+    letters = String.fromCharCode(65 + (letterValue % 26)) + letters;
+    letterValue = Math.floor(letterValue / 26);
+  }
+
+  const numberHash = (Math.imul(hash ^ 0x9e3779b9, 2654435761) >>> 0);
+  const digits = String(numberHash % 10000).padStart(4, '0');
+  return `${letters} ${digits}`;
+}
+
 export function createGoogleMapsLink(lat, lon, locationName = '') {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return '';
 
   const mapsUrl = createGoogleMapsUrl(lat, lon);
+  const shortAddress = createShortAddress(lat, lon);
   const cleanLocation = String(locationName || '').trim();
   const lines = [];
 
   if (cleanLocation) lines.push(`Location: ${cleanLocation}`);
+  if (shortAddress) lines.push(`Short address: ${shortAddress}`);
   lines.push(`Coordinates: ${lat.toFixed(6)}, ${lon.toFixed(6)}`);
   lines.push(`Map: ${mapsUrl}`);
 

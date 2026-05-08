@@ -1,10 +1,16 @@
 // IndexedDB (photos)
 
+import { isDebugModeEnabled } from '../core/utils.js';
+
 export const DB_NAME = 'lens_light_db';
 export const DB_VERSION = 1;
 export const PHOTO_STORE = 'photos';
 
 let dbPromise = null;
+
+const debugLog = (...args) => {
+  if (isDebugModeEnabled()) console.log(...args);
+};
 
 export function openPhotoDb() {
   if (dbPromise) return dbPromise;
@@ -43,23 +49,18 @@ export function openPhotoDb() {
 
 export async function dbPutPhoto(record) {
   const db = await openPhotoDb();
-  
-  // Debug logging
-  if (localStorage.getItem('debug_mode') === 'true') {
-    console.log('💾 IndexedDB PUT:', {
-      id: record.id,
-      blobSize: record.blob?.size,
-      timestamp: record.timestamp
-    });
-  }
-  
+
+  debugLog('💾 IndexedDB PUT:', {
+    id: record.id,
+    blobSize: record.blob?.size,
+    timestamp: record.timestamp
+  });
+
   return new Promise((resolve, reject) => {
     const tx = db.transaction(PHOTO_STORE, 'readwrite');
-    
+
     tx.oncomplete = () => {
-      if (localStorage.getItem('debug_mode') === 'true') {
-        console.log('✅ IndexedDB PUT complete:', record.id);
-      }
+      debugLog('✅ IndexedDB PUT complete:', record.id);
       resolve();
     };
     
@@ -98,17 +99,13 @@ export async function dbPutPhoto(record) {
 
 export async function dbDeletePhoto(id) {
   const db = await openPhotoDb();
-  
-  if (localStorage.getItem('debug_mode') === 'true') {
-    console.log('🗑️ IndexedDB DELETE:', id);
-  }
-  
+
+  debugLog('🗑️ IndexedDB DELETE:', id);
+
   return new Promise((resolve, reject) => {
     const tx = db.transaction(PHOTO_STORE, 'readwrite');
     tx.oncomplete = () => {
-      if (localStorage.getItem('debug_mode') === 'true') {
-        console.log('✅ IndexedDB DELETE complete:', id);
-      }
+      debugLog('✅ IndexedDB DELETE complete:', id);
       resolve();
     };
     tx.onerror = () => {

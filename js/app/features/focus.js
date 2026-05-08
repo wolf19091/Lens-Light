@@ -1,160 +1,131 @@
 import { state } from '../state.js';
+import { isDebugModeEnabled } from '../core/utils.js';
 
 /**
- * Tap-to-Focus Feature
- * Allows users to tap on the screen to focus on specific areas
+ * Tap-to-Focus. Maps a click on the live preview into a normalised
+ * (x, y) ∈ [0,1] focus point and applies it via the best-available
+ * MediaTrack constraint: pointsOfInterest → manual focusDistance →
+ * single-shot autofocus.
  */
 
-export function initTapToFocus(dom, videoElement) {
-    if (!videoElement) {
-        console.warn('Video element not available for tap-to-focus');
-        return;
-    }
-    
-    let focusEnabled = state.settings.focusAssist !== false;
-    const focusRing = dom.focusRing || document.getElementById('focus-ring');
-    const focusBtn = dom.focusBtn || document.getElementById('focus-btn');
-    
-    if (!focusBtn || !focusRing) {
-        console.warn('Focus UI elements not found');
-        return;
-    }
-    
-    // Toggle focus mode
-    focusBtn.addEventListener('click', () => {
-        focusEnabled = !focusEnabled;
-        focusBtn.classList.toggle('active', focusEnabled);
-        focusBtn.setAttribute('aria-pressed', focusEnabled);
-        
-        if (!focusEnabled && focusRing) {
-            focusRing.classList.remove('active');
-        }
-        
-        console.log('🎯 Tap-to-focus:', focusEnabled ? 'enabled' : 'disabled');
-    });
-    
-    // Handle tap to focus
-    const cameraView = videoElement.parentElement || document.getElementById('camera-view');
-    
-    cameraView.addEventListener('click', async (e) => {
-        // Ignore if focus is disabled or clicking on UI elements
-        if (!focusEnabled || !state.videoStream || e.target !== videoElement) return;
-        
-        const rect = videoElement.getBoundingClientRect();
-        const x = (e.clientX - rect.left) / rect.width;
-        const y = (e.clientY - rect.top) / rect.height;
-        
-        // Clamp to valid range
-        const clampedX = Math.max(0, Math.min(1, x));
-        const clampedY = Math.max(0, Math.min(1, y));
-        
-        // Show focus ring animation
-        if (focusRing) {
-            focusRing.style.left = `${e.clientX}px`;
-            focusRing.style.top = `${e.clientY}px`;
-            focusRing.classList.add('active');
-            
-            setTimeout(() => {
-                focusRing.classList.remove('active');
-            }, 1000);
-        }
-        
-        // Apply focus constraints
-        await applyFocusPoint(clampedX, clampedY);
-    });
-}
+const FOCUS_RING_LIFETIME_MS = 1000;
+const CENTER = 0.5;
+const NORMALIZED_DIST_DENOMINATOR = 0.7;
 
-async function applyFocusPoint(x, y) {
-    try {
-        const track = state.videoStream.getVideoTracks()[0];
-        if (!track) return;
-        
-        const capabilities = track.getCapabilities();
-        
-        // Try point of interest (newer API)
-        if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
-            try {
-                await track.applyConstraints({
-                    advanced: [{ 
-                        focusMode: 'continuous',
-                        pointsOfInterest: [{ x, y }]
-                    }]
-                });
-                console.log(`✅ Focus applied at (${x.toFixed(2)}, ${y.toFixed(2)})`);
-                return;
-            } catch (err) {
-                // Point of interest not supported, try manual focus
-            }
-        }
-        
-        // Try manual focus with distance calculation
-        if (capabilities.focusMode && capabilities.focusMode.includes('manual')) {
-            const focusDistance = calculateFocusDistance(x, y, capabilities);
-            await track.applyConstraints({
-                advanced: [{ 
-                    focusMode: 'manual',
-                    focusDistance: focusDistance
-                }]
-            });
-            console.log(`✅ Manual focus applied: ${focusDistance.toFixed(3)}`);
-            return;
-        }
-        
-        // Fallback to single-shot autofocus
-        if (capabilities.focusMode && capabilities.focusMode.includes('single-shot')) {
-            await track.applyConstraints({
-                advanced: [{ focusMode: 'single-shot' }]
-            });
-            console.log('✅ Single-shot autofocus triggered');
-        }
-        
-    } catch (err) {
-        console.warn('❌ Focus adjustment failed:', err.message);
-    }
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
 }
 
 function calculateFocusDistance(x, y, capabilities) {
-    // Calculate distance from center of frame
-    // Center (0.5, 0.5) = infinity (far focus)
-    // Edges = close focus
-    const centerX = 0.5, centerY = 0.5;
-    const distFromCenter = Math.sqrt(
-        Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2)
-    );
-    
-    const min = capabilities.focusDistance?.min || 0;
-    const max = capabilities.focusDistance?.max || 1;
-    
-    // Normalize distance (0 at center, ~0.7 at corners)
-    const normalizedDist = Math.min(distFromCenter / 0.7, 1);
-    
-    // Closer to center = farther focus distance (higher value)
-    // Closer to edge = nearer focus distance (lower value)
-    return max - (normalizedDist * (max - min));
+  // Map distance-from-center into a focus distance: center → far, edges → near.
+  const distFromCenter = Math.sqrt(Math.pow(x - CENTER, 2) + Math.pow(y - CENTER, 2));
+  const min = capabilities.focusDistance?.min || 0;
+  const max = capabilities.focusDistance?.max || 1;
+  const normalizedDist = Math.min(distFromCenter / NORMALIZED_DIST_DENOMINATOR, 1);
+  return max - normalizedDist * (max - min);
+}
+
+async function applyFocusPoint(x, y) {
+  try {
+    const track = state.videoStream.getVideoTracks()[0];
+    if (!track) return;
+    const capabilities = track.getCapabilities();
+    const supportedModes = capabilities.focusMode || [];
+
+    if (supportedModes.includes('continuous')) {
+      try {
+        await track.applyConstraints({
+          advanced: [{ focusMode: 'continuous', pointsOfInterest: [{ x, y }] }]
+        });
+        if (isDebugModeEnabled()) console.log(`✅ Focus applied at (${x.toFixed(2)}, ${y.toFixed(2)})`);
+        return;
+      } catch {
+        // pointsOfInterest unsupported — fall through to manual mode.
+      }
+    }
+
+    if (supportedModes.includes('manual')) {
+      const focusDistance = calculateFocusDistance(x, y, capabilities);
+      await track.applyConstraints({
+        advanced: [{ focusMode: 'manual', focusDistance }]
+      });
+      if (isDebugModeEnabled()) console.log(`✅ Manual focus applied: ${focusDistance.toFixed(3)}`);
+      return;
+    }
+
+    if (supportedModes.includes('single-shot')) {
+      await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
+      if (isDebugModeEnabled()) console.log('✅ Single-shot autofocus triggered');
+    }
+  } catch (err) {
+    console.warn('❌ Focus adjustment failed:', err.message);
+  }
+}
+
+function flashFocusRing(focusRing, clientX, clientY) {
+  if (!focusRing) return;
+  focusRing.style.left = `${clientX}px`;
+  focusRing.style.top = `${clientY}px`;
+  focusRing.classList.add('active');
+  setTimeout(() => focusRing.classList.remove('active'), FOCUS_RING_LIFETIME_MS);
+}
+
+export function initTapToFocus(dom, videoElement) {
+  if (!videoElement) {
+    console.warn('Video element not available for tap-to-focus');
+    return;
+  }
+
+  let focusEnabled = state.settings.focusAssist !== false;
+  const focusRing = dom.focusRing || document.getElementById('focus-ring');
+  const focusBtn = dom.focusBtn || document.getElementById('focus-btn');
+
+  if (!focusBtn || !focusRing) {
+    console.warn('Focus UI elements not found');
+    return;
+  }
+
+  focusBtn.addEventListener('click', () => {
+    focusEnabled = !focusEnabled;
+    focusBtn.classList.toggle('active', focusEnabled);
+    focusBtn.setAttribute('aria-pressed', focusEnabled);
+    if (!focusEnabled) focusRing.classList.remove('active');
+    if (isDebugModeEnabled()) console.log('🎯 Tap-to-focus:', focusEnabled ? 'enabled' : 'disabled');
+  });
+
+  const cameraView = videoElement.parentElement || document.getElementById('camera-view');
+  cameraView.addEventListener('click', async (e) => {
+    if (!focusEnabled || !state.videoStream || e.target !== videoElement) return;
+
+    const rect = videoElement.getBoundingClientRect();
+    const x = clamp01((e.clientX - rect.left) / rect.width);
+    const y = clamp01((e.clientY - rect.top) / rect.height);
+
+    flashFocusRing(focusRing, e.clientX, e.clientY);
+    await applyFocusPoint(x, y);
+  });
 }
 
 export function getFocusCapabilities() {
-    try {
-        if (!state.videoStream) return null;
-        
-        const track = state.videoStream.getVideoTracks()[0];
-        if (!track) return null;
-        
-        const capabilities = track.getCapabilities();
-        const settings = track.getSettings();
-        
-        return {
-            supported: Boolean(capabilities.focusMode),
-            modes: capabilities.focusMode || [],
-            currentMode: settings.focusMode,
-            focusDistance: {
-                min: capabilities.focusDistance?.min,
-                max: capabilities.focusDistance?.max,
-                current: settings.focusDistance
-            }
-        };
-    } catch (err) {
-        console.warn('Could not get focus capabilities:', err);
-        return null;
-    }
+  try {
+    if (!state.videoStream) return null;
+    const track = state.videoStream.getVideoTracks()[0];
+    if (!track) return null;
+
+    const capabilities = track.getCapabilities();
+    const settings = track.getSettings();
+    return {
+      supported: Boolean(capabilities.focusMode),
+      modes: capabilities.focusMode || [],
+      currentMode: settings.focusMode,
+      focusDistance: {
+        min: capabilities.focusDistance?.min,
+        max: capabilities.focusDistance?.max,
+        current: settings.focusDistance
+      }
+    };
+  } catch (err) {
+    console.warn('Could not get focus capabilities:', err);
+    return null;
+  }
 }

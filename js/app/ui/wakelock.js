@@ -5,7 +5,6 @@ export async function requestWakeLock() {
     if (!('wakeLock' in navigator)) return;
     if (state.wakeLock) await state.wakeLock.release().catch(() => {});
     state.wakeLock = await navigator.wakeLock.request('screen');
-    state.wakeLock.addEventListener('release', () => {});
   } catch (e) {
     console.warn('wakeLock failed', e);
   }

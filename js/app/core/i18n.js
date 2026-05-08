@@ -133,10 +133,10 @@ export function setLanguage(lang, dom) {
   if (dom?.permBtn) dom.permBtn.textContent = cameraGranted ? t('enableGPS') : t('enableCamera');
 
   if (dom?.gpsCoordsEl && (/WAITING/i.test(dom.gpsCoordsEl.textContent) || /انتظار/i.test(dom.gpsCoordsEl.textContent))) {
-    dom.gpsCoordsEl.textContent = t('waitingGPS');
+    dom.gpsCoordsEl.textContent = translations.en.waitingGPS;
   }
   if (dom?.locationNameEl && (/Unknown/i.test(dom.locationNameEl.textContent) || /غير معروف/.test(dom.locationNameEl.textContent))) {
-    dom.locationNameEl.textContent = t('locationUnknown');
+    dom.locationNameEl.textContent = translations.en.locationUnknown;
   }
 
   if (dom?.shareSelectedBtn) dom.shareSelectedBtn.textContent = state.currentLang === 'ar' ? '📤 مشاركة المحدد' : '📤 Share Selected';

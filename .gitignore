@@ -6,3 +6,7 @@ node_modules/
 .vscode/
 *.swp
 *.swo
+.claude/
+lenslight_export_*.pdf
+lenslight_export_*.xlsx
+lenslight_export_*.xls

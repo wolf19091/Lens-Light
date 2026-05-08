@@ -57,6 +57,7 @@ export const state = {
   currentAlt: 0,
   currentAccuracy: 0,
   currentHeading: 0,
+  currentShortAddress: '',
   smoothedHeading: 0,
   gpsWatchId: null,
   orientationListenerActive: false,

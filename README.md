@@ -123,7 +123,7 @@ Lens-Light/
 ├── manifest.json           # PWA manifest
 ├── sw.js                   # Service worker
 ├── css/
-│   └── style.css          # Glassmorphism UI styles
+│   └── style.css          # DESIGN.md-driven UI styles
 ├── js/
 │   ├── main.js            # App bootstrap & event handlers
 │   ├── version.js         # Single version source of truth
@@ -280,7 +280,7 @@ Enable: ✨ HDR + 🎯 Focus
 
 ## 🔧 Tech Stack
 
-- **Frontend**: HTML5, CSS3 (Glassmorphism), Vanilla JavaScript (ES6+)
+- **Frontend**: HTML5, CSS3 guided by DESIGN.md, Vanilla JavaScript (ES6+)
 - **Storage**: IndexedDB for offline photo storage
 - **APIs**:
   - MediaDevices API (camera access)

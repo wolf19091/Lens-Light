@@ -3,8 +3,8 @@
   "short_name": "Lens Light",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#00183A",
-  "theme_color": "#001F5E",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait",
   "scope": "./",
   "icons": [
