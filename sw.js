@@ -43,6 +43,7 @@ const ASSETS = [
   './js/app/sensors/weather.js',
   './js/app/pwa/pwa.js',
   './js/app/ui/viewport.js',
+  './js/app/ui/orientation.js',
   './js/app/ui/features.js',
   './js/app/ui/wakelock.js',
   './js/app/wiring/diagnostics.js',

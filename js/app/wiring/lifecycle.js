@@ -1,5 +1,6 @@
 import { state } from '../state.js';
-import { updateAppVh } from '../ui/viewport.js';
+import { updateAppVh, scheduleAppVhAfterRotation } from '../ui/viewport.js';
+import { bindUiRotation } from '../ui/orientation.js';
 import { releaseWakeLock, requestWakeLock } from '../ui/wakelock.js';
 import { stopSensors } from '../sensors/sensors.js';
 
@@ -29,8 +30,10 @@ function bindBeforeUnload() {
 }
 
 function bindViewportResize() {
+  updateAppVh();
   window.addEventListener('resize', updateAppVh);
-  window.addEventListener('orientationchange', updateAppVh);
+  window.addEventListener('orientationchange', scheduleAppVhAfterRotation);
+  window.addEventListener('pageshow', updateAppVh);
   window.visualViewport?.addEventListener('resize', updateAppVh);
   window.visualViewport?.addEventListener('scroll', updateAppVh);
 }
@@ -55,5 +58,6 @@ export function bindLifecycle(dom) {
   bindWakeLock(dom);
   bindBeforeUnload();
   bindViewportResize();
+  bindUiRotation();
   startClock(dom);
 }
