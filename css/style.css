@@ -458,6 +458,7 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
     -webkit-backdrop-filter: saturate(180%) blur(20px);
     text-align: left;
     z-index: 78;
+    pointer-events: none;
     rotate: var(--ui-rotate);
     transition: rotate 350ms cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -2146,14 +2147,18 @@ button,
         left: calc(var(--s-xs) + var(--safe-left));
         right: calc(var(--s-xs) + var(--safe-right));
         width: auto;
+        pointer-events: none;
+        padding: var(--s-xs) var(--s-sm);
     }
+    
+    #data-container .small-text { font-size: 9px; line-height: 12px; }
+    #data-container .large-text { font-size: 11px; line-height: 14px; font-weight: 500; }
 
     .action-btn { font-size: 14px; padding: var(--s-xs) var(--s-md); }
 
     .project-actions { grid-template-columns: 1fr; }
     #close-active-project-btn { grid-column: auto; }
 
-    #zoom-controls { display: none; }
 }
 
 /* Small phone */

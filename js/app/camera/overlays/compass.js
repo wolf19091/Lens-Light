@@ -3,75 +3,85 @@ import { clamp } from '../../core/utils.js';
 import { formatHeadingValue } from './format.js';
 import { fillRoundedRect, traceRoundedRect } from './canvas-utils.js';
 
+/* -------------------------------------------------------------
+   Compass watermark — translucent gray chip (DESIGN.md
+   button-icon-circular over photography), with a quiet ink-tone
+   compass face. Sits on the right edge under the header band.
+   No gradient, no shadow.
+   ------------------------------------------------------------- */
+const FONT_TEXT = `"SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+
 export function drawCompassBadgeOverlay(ctx, canvas) {
   const portraitTightness = canvas.height > canvas.width ? 0.92 : 1;
-  const badgeHeight = clamp(Math.min(canvas.width, canvas.height) * 0.08 * portraitTightness, 44, 68);
-  const margin = Math.max(canvas.width * 0.03, 22);
+  const badgeHeight = clamp(Math.min(canvas.width, canvas.height) * 0.07 * portraitTightness, 44, 64);
+  const margin = clamp(canvas.width * 0.018, 12, 28);
   const headingLabel = formatHeadingValue();
   const label = headingLabel === '--' ? 'Heading --' : headingLabel;
 
   ctx.save();
-  ctx.font = `700 ${badgeHeight * 0.28}px 'Segoe UI', Tahoma, sans-serif`;
+  ctx.font = `600 ${badgeHeight * 0.32}px ${FONT_TEXT}`;
   const labelWidth = ctx.measureText(label).width;
-  const badgeWidth = badgeHeight + labelWidth + badgeHeight * 1.2;
+  const sidePad = badgeHeight * 0.34;
+  const circleSize = badgeHeight * 0.66;
+  const gap = badgeHeight * 0.22;
+  const badgeWidth = sidePad + circleSize + gap + labelWidth + sidePad;
+
+  // Position below the masthead band so the two don't collide.
+  // The header band height is ~clamp(width * 0.075, 56, 92) + margin*2.
+  const headerBandHeight = clamp(canvas.width * 0.075, 56, 92);
   const x = canvas.width - margin - badgeWidth;
-  const y = margin;
-  const circleSize = badgeHeight - 12;
-  const circleX = x + 6;
-  const circleY = y + 6;
-  const circleRadius = circleSize / 2;
+  const y = margin + headerBandHeight + Math.max(8, margin * 0.6);
 
-  ctx.shadowColor = 'rgba(5, 14, 28, 0.26)';
-  ctx.shadowBlur = 18;
-  ctx.shadowOffsetY = 6;
-
-  const fill = ctx.createLinearGradient(x, y, x + badgeWidth, y + badgeHeight);
-  fill.addColorStop(0, 'rgba(8, 22, 40, 0.84)');
-  fill.addColorStop(1, 'rgba(15, 47, 78, 0.72)');
-  fillRoundedRect(ctx, x, y, badgeWidth, badgeHeight, badgeHeight / 2, fill);
-
-  ctx.lineWidth = 1.2;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+  // Translucent chip (DESIGN.md surface-chip-translucent)
+  fillRoundedRect(ctx, x, y, badgeWidth, badgeHeight, badgeHeight / 2, 'rgba(210, 210, 215, 0.64)');
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
   traceRoundedRect(ctx, x, y, badgeWidth, badgeHeight, badgeHeight / 2);
   ctx.stroke();
+  ctx.restore();
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-  ctx.beginPath();
-  ctx.arc(circleX + circleRadius, circleY + circleRadius, circleRadius, 0, Math.PI * 2);
-  ctx.fill();
+  // Compass face — quiet ink ring with a single Action Blue north triangle
+  const circleX = x + sidePad;
+  const circleY = y + (badgeHeight - circleSize) / 2;
+  const circleR = circleSize / 2;
 
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
-  ctx.lineWidth = 1.8;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(29, 29, 31, 0.5)';
+  ctx.lineWidth = 1.4;
   ctx.beginPath();
-  ctx.arc(circleX + circleRadius, circleY + circleRadius, circleRadius * 0.78, 0, Math.PI * 2);
+  ctx.arc(circleX + circleR, circleY + circleR, circleR * 0.92, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.translate(circleX + circleRadius, circleY + circleRadius);
+  ctx.translate(circleX + circleR, circleY + circleR);
   if (state.orientationListenerActive && Number.isFinite(state.currentHeading)) {
     ctx.rotate((state.currentHeading * Math.PI) / 180);
   }
 
+  // North needle — Action Blue
   ctx.beginPath();
-  ctx.moveTo(0, -circleRadius * 0.64);
-  ctx.lineTo(circleRadius * 0.17, 0);
-  ctx.lineTo(-circleRadius * 0.17, 0);
+  ctx.moveTo(0, -circleR * 0.7);
+  ctx.lineTo(circleR * 0.18, 0);
+  ctx.lineTo(-circleR * 0.18, 0);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(255, 126, 96, 0.96)';
+  ctx.fillStyle = '#0066cc';
   ctx.fill();
 
+  // South needle — ink-muted
   ctx.beginPath();
-  ctx.moveTo(0, circleRadius * 0.64);
-  ctx.lineTo(circleRadius * 0.15, 0);
-  ctx.lineTo(-circleRadius * 0.15, 0);
+  ctx.moveTo(0, circleR * 0.7);
+  ctx.lineTo(circleR * 0.16, 0);
+  ctx.lineTo(-circleR * 0.16, 0);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(120, 199, 255, 0.88)';
+  ctx.fillStyle = 'rgba(29, 29, 31, 0.45)';
   ctx.fill();
+  ctx.restore();
 
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = 'rgba(246, 249, 253, 0.96)';
+  // Label
+  ctx.save();
+  ctx.fillStyle = '#1d1d1f';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.font = `800 ${badgeHeight * 0.28}px 'Segoe UI', Tahoma, sans-serif`;
-  ctx.fillText(label, x + circleSize + 16, y + badgeHeight / 2);
+  ctx.font = `600 ${badgeHeight * 0.32}px ${FONT_TEXT}`;
+  ctx.fillText(label, circleX + circleSize + gap, y + badgeHeight / 2);
   ctx.restore();
 }

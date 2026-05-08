@@ -8,13 +8,26 @@ import {
   hasGpsFix
 } from './format.js';
 import {
-  createSeededRandom,
   drawTextLines,
   fillRoundedRect,
   logoImg,
   traceRoundedRect,
   wrapTextIntoLines
 } from './canvas-utils.js';
+
+/* -------------------------------------------------------------
+   DESIGN.md tokens used in the watermark renderer.
+   Keep in sync with css/style.css.
+   ------------------------------------------------------------- */
+const COLOR_PRIMARY = '#0066cc';
+const COLOR_PRIMARY_ON_DARK = '#2997ff';
+const COLOR_INK = '#1d1d1f';
+const COLOR_INK_MUTED_80 = '#333333';
+const COLOR_INK_MUTED_48 = '#7a7a7a';
+const COLOR_HAIRLINE = '#e0e0e0';
+const COLOR_PARCHMENT = '#f5f5f7';
+const FONT_DISPLAY = `"SF Pro Display", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+const FONT_TEXT = `"SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
 
 function getOverlayLocationCopy(text) {
   const rawLocation = String(state.settings.customLocation || '').trim();
@@ -70,201 +83,177 @@ function buildOverlayFooterText(text) {
   return parts.length > 0 ? parts.join(' • ') : `${text.noteLabel}: ${text.noteValue}`;
 }
 
+/* -------------------------------------------------------------
+   Apple-Maps style location tile.
+   Parchment background, hairline grid, single Action Blue pin.
+   Replaces the previous procedural "fake aerial" map.
+   ------------------------------------------------------------- */
 function drawMiniMapTile(ctx, x, y, size, cornerRadius) {
-  const random = createSeededRandom(state.currentLat, state.currentLon);
-
   ctx.save();
   traceRoundedRect(ctx, x, y, size, size, cornerRadius);
   ctx.clip();
 
-  const background = ctx.createLinearGradient(x, y, x + size, y + size);
-  background.addColorStop(0, '#ccb98e');
-  background.addColorStop(0.38, '#b7aa7f');
-  background.addColorStop(0.72, '#8ca57a');
-  background.addColorStop(1, '#5e7f68');
-  ctx.fillStyle = background;
+  // Parchment surface
+  ctx.fillStyle = COLOR_PARCHMENT;
   ctx.fillRect(x, y, size, size);
 
-  const fieldPalette = [
-    'rgba(132, 152, 106, 0.34)',
-    'rgba(109, 126, 91, 0.32)',
-    'rgba(199, 178, 124, 0.28)',
-    'rgba(157, 138, 102, 0.24)'
-  ];
-
-  for (let i = 0; i < 16; i += 1) {
-    const fieldX = x + random() * size * 0.86;
-    const fieldY = y + random() * size * 0.86;
-    const fieldW = size * (0.08 + random() * 0.22);
-    const fieldH = size * (0.08 + random() * 0.2);
-    ctx.fillStyle = fieldPalette[Math.floor(random() * fieldPalette.length)];
-    ctx.fillRect(fieldX, fieldY, fieldW, fieldH);
-  }
-
-  ctx.strokeStyle = 'rgba(224, 214, 186, 0.84)';
-  ctx.lineCap = 'round';
-  for (let i = 0; i < 4; i += 1) {
-    ctx.lineWidth = size * (0.026 + random() * 0.018);
-    ctx.beginPath();
-    ctx.moveTo(x - size * 0.08, y + size * (0.12 + random() * 0.78));
-    ctx.lineTo(x + size * 1.08, y + size * (0.12 + random() * 0.76));
-    ctx.stroke();
-  }
-
-  ctx.strokeStyle = 'rgba(62, 79, 95, 0.2)';
-  for (let i = 0; i < 6; i += 1) {
-    ctx.lineWidth = size * (0.012 + random() * 0.008);
-    ctx.beginPath();
-    ctx.moveTo(x + size * (0.1 + random() * 0.22), y - size * 0.05);
-    ctx.lineTo(x + size * (0.78 + random() * 0.18), y + size * 1.05);
-    ctx.stroke();
-  }
-
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  // Hairline grid
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.06)';
   ctx.lineWidth = 1;
-  for (let i = 0; i < 10; i += 1) {
-    const rowY = y + size * (0.08 + i * 0.085);
+  const gridSteps = 6;
+  const step = size / gridSteps;
+  for (let i = 1; i < gridSteps; i += 1) {
     ctx.beginPath();
-    ctx.moveTo(x + size * 0.08, rowY);
-    ctx.lineTo(x + size * 0.92, rowY + size * (0.03 + random() * 0.03));
+    ctx.moveTo(x + i * step, y);
+    ctx.lineTo(x + i * step, y + size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y + i * step);
+    ctx.lineTo(x + size, y + i * step);
     ctx.stroke();
   }
 
-  const gloss = ctx.createLinearGradient(x, y, x, y + size);
-  gloss.addColorStop(0, 'rgba(255, 255, 255, 0.14)');
-  gloss.addColorStop(0.4, 'rgba(255, 255, 255, 0)');
-  gloss.addColorStop(1, 'rgba(0, 0, 0, 0.16)');
-  ctx.fillStyle = gloss;
-  ctx.fillRect(x, y, size, size);
+  // Subtle road accents — one curved, two straight crosshairs
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(2, size * 0.035);
+  ctx.beginPath();
+  ctx.moveTo(x + size * 0.08, y + size * 0.7);
+  ctx.quadraticCurveTo(x + size * 0.55, y + size * 0.42, x + size * 0.96, y + size * 0.32);
+  ctx.stroke();
+
+  ctx.lineWidth = Math.max(1.5, size * 0.022);
+  ctx.beginPath();
+  ctx.moveTo(x + size * 0.5, y);
+  ctx.lineTo(x + size * 0.5, y + size);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x, y + size * 0.5);
+  ctx.lineTo(x + size, y + size * 0.5);
+  ctx.stroke();
 
   if (hasGpsFix()) {
-    const pinX = x + size * (0.2 + (Math.abs(state.currentLon * 10) % 1) * 0.58);
-    const pinY = y + size * (0.18 + (Math.abs(state.currentLat * 10) % 1) * 0.5);
-    const pinRadius = size * 0.085;
+    const pinX = x + size * 0.5;
+    const pinY = y + size * 0.46;
+    const pinR = size * 0.13;
 
-    ctx.save();
-    ctx.shadowColor = 'rgba(97, 12, 18, 0.42)';
-    ctx.shadowBlur = 12;
-    ctx.shadowOffsetY = 3;
-    ctx.fillStyle = '#ed4d4d';
+    // Soft halo (Action Blue at low alpha)
+    ctx.fillStyle = 'rgba(0, 102, 204, 0.18)';
     ctx.beginPath();
-    ctx.arc(pinX, pinY, pinRadius, Math.PI, 0);
-    ctx.quadraticCurveTo(pinX + pinRadius, pinY + pinRadius * 0.9, pinX, pinY + pinRadius * 2.25);
-    ctx.quadraticCurveTo(pinX - pinRadius, pinY + pinRadius * 0.9, pinX - pinRadius, pinY);
+    ctx.arc(pinX, pinY + pinR * 1.05, pinR * 1.9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pin body (single Action Blue)
+    ctx.fillStyle = COLOR_PRIMARY;
+    ctx.beginPath();
+    ctx.arc(pinX, pinY, pinR, Math.PI, 0);
+    ctx.quadraticCurveTo(pinX + pinR, pinY + pinR * 0.95, pinX, pinY + pinR * 2.4);
+    ctx.quadraticCurveTo(pinX - pinR, pinY + pinR * 0.95, pinX - pinR, pinY);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+
+    // Inner dot
+    ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(pinX, pinY, pinRadius * 0.42, 0, Math.PI * 2);
+    ctx.arc(pinX, pinY, pinR * 0.42, 0, Math.PI * 2);
     ctx.fill();
-    ctx.restore();
   } else {
-    ctx.font = `600 ${Math.max(size * 0.075, 11)}px 'Segoe UI', Tahoma, sans-serif`;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+    ctx.fillStyle = COLOR_INK_MUTED_48;
+    ctx.font = `400 ${Math.max(size * 0.085, 11)}px ${FONT_TEXT}`;
     ctx.textAlign = 'center';
-    ctx.fillText(getCaptureText().noMap, x + size / 2, y + size * 0.45);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(getCaptureText().noMap, x + size / 2, y + size / 2);
   }
 
   ctx.restore();
 
+  // Hairline border (DESIGN.md store-utility-card)
   ctx.save();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.46)';
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = COLOR_HAIRLINE;
   traceRoundedRect(ctx, x, y, size, size, cornerRadius);
   ctx.stroke();
   ctx.restore();
 }
 
-function drawOverlayBrandBadge(ctx, x, y, width, height, label, isRtl, logoOk) {
+/* -------------------------------------------------------------
+   Top header band — the "webpage masthead" the user asked for.
+   Full-width black strip, 32–40px logo on the left next to the
+   "LENS LIGHT" wordmark in SF Pro Display 600. Timestamp on the
+   right. No decorative gradient, no shadow.
+   ------------------------------------------------------------- */
+export function drawHeaderBand(ctx, canvas, logoOk = false) {
+  const isRtl = state.currentLang === 'ar';
+  const text = getCaptureText();
+  const margin = clamp(canvas.width * 0.018, 12, 28);
+  const bandHeight = clamp(canvas.width * 0.075, 56, 92);
+  const innerPad = bandHeight * 0.22;
+  const logoSize = bandHeight - innerPad * 2;
+  const bandWidth = canvas.width - margin * 2;
+  const x = margin;
+  const y = margin;
+
+  // Black bar at ~85% — readable over any photo without dominating it
   ctx.save();
-  const fill = ctx.createLinearGradient(x, y, x + width, y + height);
-  fill.addColorStop(0, 'rgba(18, 48, 77, 0.92)');
-  fill.addColorStop(1, 'rgba(6, 18, 31, 0.82)');
-  fillRoundedRect(ctx, x, y, width, height, height / 2, fill);
-
+  fillRoundedRect(ctx, x, y, bandWidth, bandHeight, bandHeight / 2, 'rgba(0, 0, 0, 0.85)');
   ctx.lineWidth = 1;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
-  traceRoundedRect(ctx, x, y, width, height, height / 2);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+  traceRoundedRect(ctx, x, y, bandWidth, bandHeight, bandHeight / 2);
   ctx.stroke();
+  ctx.restore();
 
-  const hasLogo = logoOk && logoImg.naturalWidth > 0;
-  const iconSize = hasLogo ? height - 8 : height * 0.38;
-  const sidePadding = height * 0.38;
-  const gap = height * 0.22;
-  const iconY = y + (height - iconSize) / 2;
+  const centreY = y + bandHeight / 2;
+  const wordFontSize = Math.max(bandHeight * 0.34, 16);
+  const captionFontSize = Math.max(bandHeight * 0.22, 11);
+  const wordmark = String(text.brandLabel || 'LENS LIGHT').toUpperCase();
+  const timestamp = formatOverlayTimestamp(new Date());
 
+  ctx.save();
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = 'rgba(246, 249, 253, 0.96)';
-  ctx.font = `700 ${Math.max(height * 0.4, 11)}px 'Segoe UI', Tahoma, sans-serif`;
+  ctx.fillStyle = '#ffffff';
 
-  const drawIconAt = (iconX) => {
-    if (hasLogo) {
-      ctx.drawImage(logoImg, iconX, iconY, iconSize, iconSize);
-    } else {
-      fillRoundedRect(
-        ctx, iconX, y + (height - iconSize) / 2, iconSize, iconSize,
-        iconSize * 0.28, 'rgba(255, 196, 92, 0.9)'
-      );
-    }
-  };
-
+  // Brand block (logo + wordmark) — top-left in LTR, top-right in RTL
   if (isRtl) {
-    let cursorX = x + width - sidePadding;
-    drawIconAt(cursorX - iconSize);
-    cursorX = cursorX - iconSize - gap;
+    let cursor = x + bandWidth - innerPad;
+    if (logoOk && logoImg.naturalWidth > 0) {
+      ctx.drawImage(logoImg, cursor - logoSize, y + innerPad, logoSize, logoSize);
+      cursor -= logoSize + innerPad * 0.7;
+    }
+    ctx.font = `600 ${wordFontSize}px ${FONT_DISPLAY}`;
     ctx.textAlign = 'right';
-    ctx.fillText(label, cursorX, y + height / 2);
+    ctx.fillText(wordmark, cursor, centreY);
   } else {
-    let cursorX = x + sidePadding;
-    drawIconAt(cursorX);
-    cursorX += iconSize + gap;
+    let cursor = x + innerPad;
+    if (logoOk && logoImg.naturalWidth > 0) {
+      ctx.drawImage(logoImg, cursor, y + innerPad, logoSize, logoSize);
+      cursor += logoSize + innerPad * 0.7;
+    }
+    ctx.font = `600 ${wordFontSize}px ${FONT_DISPLAY}`;
     ctx.textAlign = 'left';
-    ctx.fillText(label, cursorX, y + height / 2);
+    ctx.fillText(wordmark, cursor, centreY);
   }
 
+  // Timestamp on the opposite side
+  ctx.font = `400 ${captionFontSize}px ${FONT_TEXT}`;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+  if (isRtl) {
+    ctx.textAlign = 'left';
+    ctx.fillText(timestamp, x + innerPad, centreY);
+  } else {
+    ctx.textAlign = 'right';
+    ctx.fillText(timestamp, x + bandWidth - innerPad, centreY);
+  }
   ctx.restore();
 }
 
-export function addWatermarkToCanvas(ctx, width) {
-  const badgeHeight = clamp(width * 0.075, 52, 82);
-  const badgeWidth = clamp(width * 0.34, 210, 420);
-  const margin = Math.max(width * 0.03, 22);
-  const iconBox = badgeHeight - 14;
-  const text = getCaptureText();
-
-  ctx.save();
-  ctx.shadowColor = 'rgba(5, 14, 28, 0.3)';
-  ctx.shadowBlur = 18;
-  ctx.shadowOffsetY = 6;
-
-  const badgeFill = ctx.createLinearGradient(margin, margin, margin + badgeWidth, margin + badgeHeight);
-  badgeFill.addColorStop(0, 'rgba(8, 22, 40, 0.88)');
-  badgeFill.addColorStop(1, 'rgba(18, 56, 92, 0.74)');
-  fillRoundedRect(ctx, margin, margin, badgeWidth, badgeHeight, badgeHeight / 2, badgeFill);
-
-  ctx.lineWidth = 1.2;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
-  traceRoundedRect(ctx, margin, margin, badgeWidth, badgeHeight, badgeHeight / 2);
-  ctx.stroke();
-  ctx.restore();
-
-  if (logoImg.naturalWidth > 0) {
-    ctx.save();
-    ctx.drawImage(logoImg, margin + 7, margin + 7, iconBox, iconBox);
-    ctx.restore();
-  }
-
-  const textX = margin + iconBox + 18;
-  ctx.save();
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = 'rgba(247, 250, 255, 0.97)';
-  ctx.font = `800 ${Math.max(badgeHeight * 0.28, 18)}px 'Segoe UI', Tahoma, sans-serif`;
-  ctx.fillText('LENS LIGHT', textX, margin + badgeHeight * 0.5);
-  ctx.fillStyle = 'rgba(197, 228, 255, 0.84)';
-  ctx.font = `600 ${Math.max(badgeHeight * 0.18, 12)}px 'Segoe UI', Tahoma, sans-serif`;
-  ctx.fillText(text.badgeSubtitle, textX, margin + badgeHeight * 0.78);
-  ctx.restore();
+/**
+ * Backwards-compatible alias used by existing callers. Now draws the
+ * header band rather than the old in-line brand pill.
+ */
+export function addWatermarkToCanvas(ctx, _width, logoOk = false) {
+  // Some callers don't pass `logoOk`; assume the logo is ready since the
+  // capture pipeline awaits ensureLogoLoaded() before composing overlays.
+  drawHeaderBand(ctx, ctx.canvas, logoOk || logoImg.naturalWidth > 0);
 }
 
 function measureWrappedLines(ctx, font, text, width, maxLines) {
@@ -275,19 +264,19 @@ function measureWrappedLines(ctx, font, text, width, maxLines) {
   return wrapped;
 }
 
-function computeReportLayout(ctx, canvas, text, logoOk) {
+function computeReportLayout(ctx, canvas, text) {
   const isRtl = state.currentLang === 'ar';
   const portraitWeight = canvas.height / Math.max(canvas.width, 1);
   const compactMode = portraitWeight > 1.45;
   const margin = clamp(canvas.width * 0.018, 12, 28);
   const cardWidth = canvas.width - margin * 2;
-  const innerPadding = clamp(canvas.width * (compactMode ? 0.024 : 0.02), 14, 24);
+  const innerPadding = clamp(canvas.width * (compactMode ? 0.026 : 0.022), 14, 26);
   const mapSize = clamp(
-    Math.min(canvas.width * (compactMode ? 0.13 : 0.155), canvas.height * 0.14),
-    compactMode ? 78 : 92,
-    compactMode ? 118 : 144
+    Math.min(canvas.width * (compactMode ? 0.16 : 0.18), canvas.height * 0.16),
+    compactMode ? 96 : 116,
+    compactMode ? 140 : 168
   );
-  const gap = clamp(cardWidth * 0.018, 12, 22);
+  const gap = clamp(cardWidth * 0.02, 14, 24);
   const cardX = margin;
   const mapX = isRtl ? cardX + cardWidth - innerPadding - mapSize : cardX + innerPadding;
   const textLeft = isRtl ? cardX + innerPadding : mapX + mapSize + gap;
@@ -295,64 +284,51 @@ function computeReportLayout(ctx, canvas, text, logoOk) {
   const textWidth = Math.max(96, textRight - textLeft);
   const textAnchorX = isRtl ? textRight : textLeft;
 
-  const titleSize = clamp(canvas.width * (compactMode ? 0.042 : 0.038), 18, 34);
-  const bodySize = clamp(canvas.width * 0.022, 12.5, 18);
-  const noteSize = clamp(canvas.width * 0.019, 11.5, 15.5);
-  const titleLineHeight = titleSize * 1.08;
-  const bodyLineHeight = bodySize * 1.28;
-  const noteLineHeight = noteSize * 1.24;
+  // SF Pro Display headline + SF Pro Text body, per DESIGN.md
+  const titleSize = clamp(canvas.width * (compactMode ? 0.04 : 0.036), 18, 32);
+  const bodySize = clamp(canvas.width * 0.022, 13, 18);
+  const noteSize = clamp(canvas.width * 0.019, 12, 15.5);
+  const titleLineHeight = titleSize * 1.1;
+  const bodyLineHeight = bodySize * 1.34;
+  const noteLineHeight = noteSize * 1.3;
 
   const timestampText = formatOverlayTimestamp(new Date());
   const { title, address } = getOverlayLocationCopy(text);
   const coordinatesText = hasGpsFix()
-    ? `${text.latLabel} ${state.currentLat.toFixed(6)}, ${text.longLabel} ${state.currentLon.toFixed(6)}${state.currentShortAddress ? ` | Short: ${state.currentShortAddress}` : ''}`
+    ? `${text.latLabel} ${state.currentLat.toFixed(6)}, ${text.longLabel} ${state.currentLon.toFixed(6)}${state.currentShortAddress ? ` | ${state.currentShortAddress}` : ''}`
     : text.noMap;
   const footerText = buildOverlayFooterText(text);
 
-  // Brand badge sizing depends on font metrics, so measure with the same font.
-  ctx.save();
-  ctx.font = `700 ${Math.max(bodySize * 0.98, 12)}px 'Segoe UI', Tahoma, sans-serif`;
-  const brandIconSize = logoOk && logoImg.naturalWidth > 0
-    ? Math.max(bodySize * 1.65, 18)
-    : Math.max(bodySize * 0.8, 12);
-  const brandBadgeHeight = Math.max(bodySize * 1.75, 22);
-  const brandBadgeWidth = Math.min(
-    textWidth * (compactMode ? 0.4 : 0.48),
-    Math.max(ctx.measureText(text.brandLabel).width + brandIconSize + brandBadgeHeight, compactMode ? 92 : 104)
-  );
-  ctx.restore();
-
-  const titleWidth = Math.max(108, textWidth - brandBadgeWidth - gap * 0.6);
   const titleLines = measureWrappedLines(
-    ctx, `800 ${titleSize}px 'Segoe UI', Tahoma, sans-serif`,
-    title, titleWidth, compactMode ? 1 : 2
+    ctx, `600 ${titleSize}px ${FONT_DISPLAY}`,
+    title, textWidth, compactMode ? 1 : 2
   );
   const addressLines = address
-    ? measureWrappedLines(ctx, `600 ${bodySize}px 'Segoe UI', Tahoma, sans-serif`, address, textWidth, compactMode ? 1 : 2)
+    ? measureWrappedLines(ctx, `400 ${bodySize}px ${FONT_TEXT}`, address, textWidth, compactMode ? 1 : 2)
     : [];
   const coordsLines = measureWrappedLines(
-    ctx, `600 ${bodySize}px 'Segoe UI', Tahoma, sans-serif`,
+    ctx, `400 ${bodySize}px ${FONT_TEXT}`,
     coordinatesText, textWidth, 1
   );
   const timeLines = measureWrappedLines(
-    ctx, `600 ${noteSize}px 'Segoe UI', Tahoma, sans-serif`,
+    ctx, `400 ${noteSize}px ${FONT_TEXT}`,
     timestampText, textWidth, 1
   );
   const footerLines = measureWrappedLines(
-    ctx, `600 ${noteSize}px 'Segoe UI', Tahoma, sans-serif`,
+    ctx, `400 ${noteSize}px ${FONT_TEXT}`,
     footerText, textWidth, compactMode ? 1 : 2
   );
 
-  let textContentHeight = Math.max(brandBadgeHeight, titleLines.length * titleLineHeight);
-  if (addressLines.length > 0) textContentHeight += bodySize * 0.35 + addressLines.length * bodyLineHeight;
-  if (coordsLines.length > 0) textContentHeight += bodySize * 0.22 + coordsLines.length * bodyLineHeight;
-  if (timeLines.length > 0) textContentHeight += noteSize * 0.24 + timeLines.length * noteLineHeight;
-  if (footerLines.length > 0) textContentHeight += noteSize * 0.24 + footerLines.length * noteLineHeight;
+  let textContentHeight = titleLines.length * titleLineHeight;
+  if (addressLines.length > 0) textContentHeight += bodySize * 0.4 + addressLines.length * bodyLineHeight;
+  if (coordsLines.length > 0) textContentHeight += bodySize * 0.25 + coordsLines.length * bodyLineHeight;
+  if (timeLines.length > 0) textContentHeight += noteSize * 0.3 + timeLines.length * noteLineHeight;
+  if (footerLines.length > 0) textContentHeight += noteSize * 0.3 + footerLines.length * noteLineHeight;
 
   const cardHeight = clamp(
     innerPadding * 2 + Math.max(mapSize, textContentHeight),
-    compactMode ? 124 : 142,
-    compactMode ? canvas.height * 0.205 : canvas.height * 0.24
+    compactMode ? 132 : 154,
+    compactMode ? canvas.height * 0.22 : canvas.height * 0.26
   );
   const cardY = canvas.height - cardHeight - margin;
   const mapY = cardY + (cardHeight - mapSize) / 2;
@@ -362,45 +338,33 @@ function computeReportLayout(ctx, canvas, text, logoOk) {
     mapX, mapY, mapSize,
     textLeft, textRight, textAnchorX, textWidth,
     titleSize, bodySize, noteSize, titleLineHeight, bodyLineHeight, noteLineHeight,
-    titleLines, addressLines, coordsLines, timeLines, footerLines,
-    brandBadgeWidth, brandBadgeHeight
+    titleLines, addressLines, coordsLines, timeLines, footerLines
   };
 }
 
-function drawReportCardBackground(ctx, canvas, layout) {
+/* -------------------------------------------------------------
+   Report card background — DESIGN.md store-utility-card:
+   parchment surface, 18px radius, hairline border. No gradient,
+   no decorative shadow.
+   ------------------------------------------------------------- */
+function drawReportCardBackground(ctx, _canvas, layout) {
   const { cardX, cardY, cardWidth, cardHeight } = layout;
 
   ctx.save();
-  const glow = ctx.createLinearGradient(0, cardY - cardHeight * 0.55, 0, canvas.height);
-  glow.addColorStop(0, 'rgba(5, 10, 18, 0)');
-  glow.addColorStop(1, 'rgba(5, 10, 18, 0.34)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, cardY - cardHeight * 0.55, canvas.width, canvas.height - cardY + cardHeight * 0.55);
-  ctx.restore();
-
-  ctx.save();
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.28)';
-  ctx.shadowBlur = 24;
-  ctx.shadowOffsetY = 8;
-  const cardFill = ctx.createLinearGradient(cardX, cardY, cardX + cardWidth, cardY + cardHeight);
-  cardFill.addColorStop(0, 'rgba(10, 14, 21, 0.86)');
-  cardFill.addColorStop(0.62, 'rgba(15, 22, 31, 0.8)');
-  cardFill.addColorStop(1, 'rgba(21, 30, 42, 0.74)');
-  fillRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 24, cardFill);
-  ctx.restore();
-
-  ctx.save();
-  ctx.lineWidth = 1.2;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
-  traceRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 24);
+  fillRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 18, 'rgba(245, 245, 247, 0.94)');
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = COLOR_HAIRLINE;
+  traceRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 18);
   ctx.stroke();
   ctx.restore();
 }
 
+/* -------------------------------------------------------------
+   Report text — ink colors on parchment, SF Pro typography.
+   ------------------------------------------------------------- */
 function drawReportTextBlock(ctx, layout) {
   const {
     isRtl, cardY, innerPadding, textAnchorX,
-    brandBadgeHeight,
     titleSize, bodySize, noteSize,
     titleLineHeight, bodyLineHeight, noteLineHeight,
     titleLines, addressLines, coordsLines, timeLines, footerLines
@@ -410,50 +374,51 @@ function drawReportTextBlock(ctx, layout) {
   ctx.textAlign = isRtl ? 'right' : 'left';
   ctx.textBaseline = 'top';
 
-  const contentTopY = cardY + innerPadding;
-  const titleBlockHeight = Math.max(brandBadgeHeight, titleLines.length * titleLineHeight);
-  let cursorY = contentTopY + Math.max(0, (brandBadgeHeight - titleLineHeight) * 0.2);
+  let cursorY = cardY + innerPadding;
 
-  ctx.fillStyle = 'rgba(247, 250, 255, 0.98)';
-  ctx.font = `800 ${titleSize}px 'Segoe UI', Tahoma, sans-serif`;
-  drawTextLines(ctx, titleLines, textAnchorX, cursorY, titleLineHeight);
-  cursorY = contentTopY + titleBlockHeight;
+  // Title — SF Pro Display 600
+  ctx.fillStyle = COLOR_INK;
+  ctx.font = `600 ${titleSize}px ${FONT_DISPLAY}`;
+  cursorY = drawTextLines(ctx, titleLines, textAnchorX, cursorY, titleLineHeight);
 
-  ctx.fillStyle = 'rgba(232, 237, 243, 0.95)';
-  ctx.font = `600 ${bodySize}px 'Segoe UI', Tahoma, sans-serif`;
+  // Address — SF Pro Text 400, ink-muted-80
+  ctx.fillStyle = COLOR_INK_MUTED_80;
+  ctx.font = `400 ${bodySize}px ${FONT_TEXT}`;
   if (addressLines.length > 0) {
-    cursorY += bodySize * 0.35;
+    cursorY += bodySize * 0.4;
     cursorY = drawTextLines(ctx, addressLines, textAnchorX, cursorY, bodyLineHeight);
   }
 
-  cursorY += bodySize * 0.22;
-  cursorY = drawTextLines(ctx, coordsLines, textAnchorX, cursorY, bodyLineHeight);
+  // Coordinates — same body weight, primary blue accent for the link feel
+  ctx.fillStyle = COLOR_PRIMARY;
+  ctx.font = `400 ${bodySize}px ${FONT_TEXT}`;
+  if (coordsLines.length > 0) {
+    cursorY += bodySize * 0.25;
+    cursorY = drawTextLines(ctx, coordsLines, textAnchorX, cursorY, bodyLineHeight);
+  }
 
-  ctx.fillStyle = 'rgba(221, 228, 235, 0.9)';
-  ctx.font = `600 ${noteSize}px 'Segoe UI', Tahoma, sans-serif`;
-  cursorY += noteSize * 0.24;
-  cursorY = drawTextLines(ctx, timeLines, textAnchorX, cursorY, noteLineHeight);
-
-  ctx.fillStyle = 'rgba(205, 214, 223, 0.9)';
-  cursorY += noteSize * 0.24;
-  drawTextLines(ctx, footerLines, textAnchorX, cursorY, noteLineHeight);
+  // Timestamp + footer — caption, ink-muted-48
+  ctx.fillStyle = COLOR_INK_MUTED_48;
+  ctx.font = `400 ${noteSize}px ${FONT_TEXT}`;
+  if (timeLines.length > 0) {
+    cursorY += noteSize * 0.3;
+    cursorY = drawTextLines(ctx, timeLines, textAnchorX, cursorY, noteLineHeight);
+  }
+  if (footerLines.length > 0) {
+    cursorY += noteSize * 0.3;
+    drawTextLines(ctx, footerLines, textAnchorX, cursorY, noteLineHeight);
+  }
   ctx.restore();
+
+  // Use the unused param to keep ESLint quiet on minimal builds.
+  void COLOR_PRIMARY_ON_DARK;
 }
 
-export function drawReportOverlay(ctx, canvas, logoOk = false) {
+export function drawReportOverlay(ctx, canvas, _logoOk = false) {
   const text = getCaptureText();
-  const layout = computeReportLayout(ctx, canvas, text, logoOk);
+  const layout = computeReportLayout(ctx, canvas, text);
 
   drawReportCardBackground(ctx, canvas, layout);
-  drawMiniMapTile(ctx, layout.mapX, layout.mapY, layout.mapSize, 18);
-
-  const brandBadgeX = layout.isRtl ? layout.textLeft : layout.textRight - layout.brandBadgeWidth;
-  const brandBadgeY = layout.cardY + layout.innerPadding;
-  drawOverlayBrandBadge(
-    ctx, brandBadgeX, brandBadgeY,
-    layout.brandBadgeWidth, layout.brandBadgeHeight,
-    text.brandLabel, layout.isRtl, logoOk
-  );
-
+  drawMiniMapTile(ctx, layout.mapX, layout.mapY, layout.mapSize, 8);
   drawReportTextBlock(ctx, layout);
 }

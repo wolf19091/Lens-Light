@@ -4,7 +4,7 @@ import { t } from '../core/i18n.js';
 import { dbPutPhoto } from '../storage/photoDb.js';
 import { playBeep, playCameraShutter } from './audio.js';
 import { ensureLogoLoaded } from './overlays/canvas-utils.js';
-import { drawReportOverlay, addWatermarkToCanvas } from './overlays/report.js';
+import { drawReportOverlay, drawHeaderBand } from './overlays/report.js';
 import { drawCompassBadgeOverlay } from './overlays/compass.js';
 
 const PORTRAIT_MAX_DIMENSION = 3200;
@@ -254,12 +254,17 @@ async function applyEnhancementFilters(canvas, ctx) {
 
 async function composeOverlays(ctx, canvas) {
   const { settings } = state;
-  const shouldLoadLogo = settings.showData || settings.watermark;
-  const logoOk = shouldLoadLogo ? await ensureLogoLoaded(800) : false;
+  const wantsHeader = settings.watermark || settings.showData;
+  const logoOk = wantsHeader ? await ensureLogoLoaded(800) : false;
 
+  // Webpage-style masthead at the top.
+  if (wantsHeader) drawHeaderBand(ctx, canvas, logoOk);
+
+  // Bottom information card (location, coordinates, accuracy/altitude/weather).
   if (settings.showData) drawReportOverlay(ctx, canvas, logoOk);
+
+  // Compass chip on the right, positioned just below the masthead.
   if (settings.showCompass) drawCompassBadgeOverlay(ctx, canvas);
-  if (settings.watermark && !settings.showData) addWatermarkToCanvas(ctx, canvas.width);
 }
 
 async function persistCapturedPhoto(blob, { showStatus, onCaptured }) {
