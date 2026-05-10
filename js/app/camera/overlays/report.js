@@ -185,8 +185,8 @@ function drawMiniMapTile(ctx, x, y, size, cornerRadius) {
 export function drawHeaderBand(ctx, canvas, logoOk = false) {
   const isRtl = state.currentLang === 'ar';
   const text = getCaptureText();
-  const margin = clamp(canvas.width * 0.018, 12, 28);
-  const bandHeight = clamp(canvas.width * 0.075, 56, 92);
+  const margin = clamp(canvas.width * 0.018, 12, 56);
+  const bandHeight = clamp(canvas.width * 0.075, 56, 200);
   const innerPad = bandHeight * 0.22;
   const logoSize = bandHeight - innerPad * 2;
   const bandWidth = canvas.width - margin * 2;
@@ -268,15 +268,15 @@ function computeReportLayout(ctx, canvas, text) {
   const isRtl = state.currentLang === 'ar';
   const portraitWeight = canvas.height / Math.max(canvas.width, 1);
   const compactMode = portraitWeight > 1.45;
-  const margin = clamp(canvas.width * 0.018, 12, 28);
+  const margin = clamp(canvas.width * 0.018, 12, 56);
   const cardWidth = canvas.width - margin * 2;
-  const innerPadding = clamp(canvas.width * (compactMode ? 0.026 : 0.022), 14, 26);
+  const innerPadding = clamp(canvas.width * (compactMode ? 0.026 : 0.022), 14, 56);
   const mapSize = clamp(
     Math.min(canvas.width * (compactMode ? 0.16 : 0.18), canvas.height * 0.16),
     compactMode ? 96 : 116,
-    compactMode ? 140 : 168
+    compactMode ? 320 : 380
   );
-  const gap = clamp(cardWidth * 0.02, 14, 24);
+  const gap = clamp(cardWidth * 0.02, 14, 56);
   const cardX = margin;
   const mapX = isRtl ? cardX + cardWidth - innerPadding - mapSize : cardX + innerPadding;
   const textLeft = isRtl ? cardX + innerPadding : mapX + mapSize + gap;
@@ -285,9 +285,9 @@ function computeReportLayout(ctx, canvas, text) {
   const textAnchorX = isRtl ? textRight : textLeft;
 
   // SF Pro Display headline + SF Pro Text body, per DESIGN.md
-  const titleSize = clamp(canvas.width * (compactMode ? 0.04 : 0.036), 18, 32);
-  const bodySize = clamp(canvas.width * 0.022, 13, 18);
-  const noteSize = clamp(canvas.width * 0.019, 12, 15.5);
+  const titleSize = clamp(canvas.width * (compactMode ? 0.04 : 0.036), 18, 72);
+  const bodySize = clamp(canvas.width * 0.022, 13, 44);
+  const noteSize = clamp(canvas.width * 0.019, 12, 38);
   const titleLineHeight = titleSize * 1.1;
   const bodyLineHeight = bodySize * 1.34;
   const noteLineHeight = noteSize * 1.3;
@@ -328,7 +328,7 @@ function computeReportLayout(ctx, canvas, text) {
   const cardHeight = clamp(
     innerPadding * 2 + Math.max(mapSize, textContentHeight),
     compactMode ? 132 : 154,
-    compactMode ? canvas.height * 0.22 : canvas.height * 0.26
+    compactMode ? canvas.height * 0.30 : canvas.height * 0.34
   );
   const cardY = canvas.height - cardHeight - margin;
   const mapY = cardY + (cardHeight - mapSize) / 2;

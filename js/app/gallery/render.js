@@ -32,9 +32,11 @@ export function updateGalleryUI(dom) {
 
   if (dom?.photoCountEl) {
     if (count > 0) {
+      dom.photoCountEl.classList.remove('is-hidden');
       dom.photoCountEl.style.display = 'flex';
       dom.photoCountEl.textContent = String(count);
     } else {
+      dom.photoCountEl.classList.add('is-hidden');
       dom.photoCountEl.style.display = 'none';
       dom.photoCountEl.textContent = '0';
     }
@@ -180,10 +182,11 @@ export function renderGallery(dom, galleryObserver, env = {}) {
   const activeProject = getActiveProjectName();
 
   if (visiblePhotos.length === 0) {
-    if (dom?.selectModeBtn) dom.selectModeBtn.style.display = 'none';
+    if (dom?.selectModeBtn) dom.selectModeBtn.classList.add('is-hidden');
     renderEmptyState(dom.galleryGrid, activeProject);
     return;
   }
+  if (dom?.selectModeBtn && !state.isSelectMode) dom.selectModeBtn.classList.remove('is-hidden');
 
   const fragment = document.createDocumentFragment();
   const reversed = visiblePhotos.slice().reverse();
@@ -197,8 +200,14 @@ export function renderGallery(dom, galleryObserver, env = {}) {
 export function enterSelectMode(dom) {
   state.isSelectMode = true;
   state.selectedPhotos.clear();
-  if (dom?.galleryActionsDiv) dom.galleryActionsDiv.style.display = 'flex';
-  if (dom?.selectModeBtn) dom.selectModeBtn.style.display = 'none';
+  if (dom?.galleryActionsDiv) {
+    dom.galleryActionsDiv.style.removeProperty('display');
+    dom.galleryActionsDiv.classList.remove('is-hidden');
+  }
+  if (dom?.selectModeBtn) {
+    dom.selectModeBtn.style.removeProperty('display');
+    dom.selectModeBtn.classList.add('is-hidden');
+  }
   document.querySelectorAll('.gallery-item').forEach((el) => el.classList.add('select-mode'));
   updateSelectAllButton(dom);
 }
@@ -206,8 +215,14 @@ export function enterSelectMode(dom) {
 export function exitSelectMode(dom) {
   state.isSelectMode = false;
   state.selectedPhotos.clear();
-  if (dom?.galleryActionsDiv) dom.galleryActionsDiv.style.display = 'none';
-  if (getGalleryPhotos().length > 0 && dom?.selectModeBtn) dom.selectModeBtn.style.display = 'block';
+  if (dom?.galleryActionsDiv) {
+    dom.galleryActionsDiv.style.removeProperty('display');
+    dom.galleryActionsDiv.classList.add('is-hidden');
+  }
+  if (dom?.selectModeBtn) {
+    dom.selectModeBtn.style.removeProperty('display');
+    if (getGalleryPhotos().length > 0) dom.selectModeBtn.classList.remove('is-hidden');
+  }
   document.querySelectorAll('.gallery-item').forEach((el) => el.classList.remove('select-mode', 'selected'));
   updateSelectAllButton(dom);
 }

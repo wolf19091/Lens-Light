@@ -218,7 +218,7 @@ function openActiveProjectGallery(dom, env) {
   dom.galleryModal?.classList.add('open');
   dom.galleryModal?.setAttribute('aria-hidden', 'false');
   renderGallery(dom, galleryObserver, { showStatus });
-  if (getGalleryPhotos().length > 0 && dom.selectModeBtn) dom.selectModeBtn.style.display = 'block';
+  if (getGalleryPhotos().length > 0 && dom.selectModeBtn) dom.selectModeBtn.classList.remove('is-hidden');
   if (!isTouchPrimaryInput()) dom.closeGalleryBtn?.focus?.();
   closeProjectPanel(dom);
 }

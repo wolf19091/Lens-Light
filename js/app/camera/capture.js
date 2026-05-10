@@ -7,8 +7,8 @@ import { ensureLogoLoaded } from './overlays/canvas-utils.js';
 import { drawReportOverlay, drawHeaderBand } from './overlays/report.js';
 import { drawCompassBadgeOverlay } from './overlays/compass.js';
 
-const PORTRAIT_MAX_DIMENSION = 3200;
-const LANDSCAPE_MAX_DIMENSION = 2800;
+const PORTRAIT_MAX_DIMENSION = 4096;
+const LANDSCAPE_MAX_DIMENSION = 4096;
 const PORTRAIT_MAX_UPSCALE = 1.4;
 const LANDSCAPE_MAX_UPSCALE = 1.25;
 const SHARPEN_AMOUNT = 0.15;
@@ -19,7 +19,7 @@ const STORAGE_FULL_THRESHOLD_PCT = 95;
 const STORAGE_LOW_THRESHOLD_PCT = 75;
 const STORAGE_FULL_WARN_PCT = 90;
 const DEFAULT_WHITE_BALANCE = 5500;
-const MIN_JPEG_QUALITY = 0.92;
+const MIN_JPEG_QUALITY = 0.95;
 
 const FILTER_CSS = Object.freeze({
   bw: 'grayscale(1)',
