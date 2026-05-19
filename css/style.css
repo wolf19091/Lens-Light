@@ -588,12 +588,15 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
 
 /* -------------------------------------------------------------
    13. TIMER + FILTER MENUS — small parchment popovers
+   Native <fieldset> + <input type="radio"> styled as pill buttons.
    ------------------------------------------------------------- */
 #timer-menu,
 #filter-menu {
     position: fixed;
     top: calc(56px + var(--safe-top) + 80px);
     left: calc(var(--s-md) + var(--safe-left) + 64px);
+    margin: 0;
+    min-width: 0;
     padding: var(--s-xs);
     background: var(--color-canvas-parchment);
     color: var(--color-ink);
@@ -624,8 +627,10 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
     transform: translateX(0);
 }
 
-.timer-option,
-.filter-option {
+.radio-option {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     min-height: 36px;
     padding: var(--s-xs) var(--s-sm);
     background: var(--color-canvas);
@@ -642,15 +647,32 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
     transition: var(--press);
 }
 
-.timer-option.selected,
-.filter-option.selected {
+/* Hide the native radio circle but keep it focusable/operable */
+.radio-option input[type="radio"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.radio-option:has(input[type="radio"]:checked) {
     background: var(--color-primary);
     color: var(--color-on-primary);
     border-color: var(--color-primary);
 }
 
-.timer-option:active,
-.filter-option:active { transform: scale(0.95); }
+.radio-option:has(input[type="radio"]:focus-visible) {
+    outline: 2px solid var(--color-primary-focus);
+    outline-offset: 2px;
+}
+
+.radio-option:active { transform: scale(0.95); }
 
 /* -------------------------------------------------------------
    14. EXPOSURE + WHITE BALANCE — sliders
@@ -901,7 +923,8 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
 #project-btn,
 #settings-btn,
 #share-btn,
-#flip-camera-btn {
+#flip-camera-btn,
+#verify-btn {
     width: 44px;
     height: 44px;
     min-width: 44px;
@@ -925,13 +948,15 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
 #project-btn:active,
 #settings-btn:active,
 #share-btn:active,
-#flip-camera-btn:active { scale: 0.95; }
+#flip-camera-btn:active,
+#verify-btn:active { scale: 0.95; }
 
 #gallery-btn:focus-visible,
 #project-btn:focus-visible,
 #settings-btn:focus-visible,
 #share-btn:focus-visible,
-#flip-camera-btn:focus-visible {
+#flip-camera-btn:focus-visible,
+#verify-btn:focus-visible {
     outline: 2px solid var(--color-primary-focus);
     outline-offset: 2px;
 }
@@ -1005,6 +1030,20 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
    ------------------------------------------------------------- */
 .is-hidden { display: none !important; }
 
+/* Visually hidden, but available to assistive technology */
+.sr-only {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
 /* -------------------------------------------------------------
    20. PANELS (Settings, Project, Gallery, Export-Prep)
    These are full-width modal sheets on parchment. Per DESIGN.md:
@@ -1016,7 +1055,8 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
 #settings-panel,
 #gallery-modal,
 #project-panel,
-#export-prep-modal {
+#export-prep-modal,
+#verify-modal {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
@@ -1044,9 +1084,60 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
 #settings-panel.open,
 #gallery-modal.open,
 #project-panel.open,
-#export-prep-modal.open {
+#export-prep-modal.open,
+#verify-modal.open {
     bottom: 0;
     opacity: 1;
+}
+
+#verify-modal {
+    padding: var(--s-lg);
+    padding-bottom: calc(var(--s-lg) + var(--safe-bottom));
+}
+.verify-intro {
+    margin: 0 0 var(--s-md);
+    color: var(--color-ink-muted-80, #475569);
+    font-size: 14px;
+    line-height: 1.45;
+}
+.verify-actions {
+    display: flex;
+    gap: var(--s-sm);
+    flex-wrap: wrap;
+    margin-top: var(--s-md);
+}
+.verify-actions .action-btn { flex: 1 1 160px; }
+.verify-actions .action-btn.primary {
+    background: var(--color-primary, #0066cc);
+    color: #ffffff;
+    border-color: var(--color-primary, #0066cc);
+}
+.verify-result {
+    margin-top: var(--s-md);
+    padding: var(--s-md);
+    border-radius: var(--r-lg);
+    border: 1px solid var(--color-hairline);
+    background: var(--color-canvas);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 1.5em;
+    word-break: break-word;
+}
+.verify-result.is-empty { display: none; }
+.verify-result.is-match {
+    border-color: #16a34a;
+    background: #f0fdf4;
+    color: #166534;
+}
+.verify-result.is-mismatch {
+    border-color: #dc2626;
+    background: #fef2f2;
+    color: #991b1b;
+}
+.verify-result.is-info {
+    border-color: #d4a017;
+    background: #fffbeb;
+    color: #92400e;
 }
 
 #project-panel-backdrop {
@@ -1120,42 +1211,6 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
 }
 .close-btn:active { transform: scale(0.95); }
 .close-btn:focus-visible { outline: 2px solid var(--color-primary-focus); outline-offset: 2px; }
-
-/* Icon-only close button (e.g. floating over photo viewer) */
-.close-btn.close-btn-icon {
-    position: absolute;
-    top: var(--s-md);
-    right: var(--s-md);
-    z-index: 3;
-    min-height: 0;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    background: rgba(20, 20, 22, 0.62);
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    font-family: var(--font-text);
-    font-size: 20px;
-    font-weight: 300;
-    line-height: 1;
-    letter-spacing: 0;
-    box-shadow:
-        0 4px 14px rgba(0, 0, 0, 0.35),
-        inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(10px) saturate(140%);
-    -webkit-backdrop-filter: blur(10px) saturate(140%);
-}
-.close-btn.close-btn-icon:hover {
-    background: rgba(20, 20, 22, 0.82);
-    border-color: rgba(255, 255, 255, 0.28);
-    transform: scale(1.05);
-}
-.close-btn.close-btn-icon:active { transform: scale(0.92); }
-.close-btn.close-btn-icon:focus-visible { outline-offset: 3px; }
 
 /* Setting cards — store-utility-card grammar */
 .setting-item {
@@ -2224,7 +2279,8 @@ button,
     #project-btn,
     #settings-btn,
     #share-btn,
-    #flip-camera-btn { font-size: 17px; }
+    #flip-camera-btn,
+    #verify-btn { font-size: 17px; }
 
     .gallery-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--s-xs); padding: var(--s-sm); }
 
@@ -2268,7 +2324,8 @@ button,
     #project-btn,
     #settings-btn,
     #share-btn,
-    #flip-camera-btn { width: 40px; height: 40px; min-width: 40px; flex-basis: 40px; }
+    #flip-camera-btn,
+    #verify-btn { width: 40px; height: 40px; min-width: 40px; flex-basis: 40px; }
 }
 
 /* -------------------------------------------------------------
