@@ -125,6 +125,25 @@ export function getDom() {
     viewerShareBtn: $('viewer-share-btn'),
     viewerSaveBtn: $('viewer-save-btn'),
     viewerCommentBtn: $('viewer-comment-btn'),
-    viewerDeleteBtn: $('viewer-delete-btn')
+    viewerVerifyBtn: $('viewer-verify-btn'),
+    viewerDeleteBtn: $('viewer-delete-btn'),
+
+    // photo-code manual verifier
+    verifyBtn: $('verify-btn'),
+    verifyModal: $('verify-modal'),
+    closeVerifyBtn: $('close-verify'),
+    verifyIntro: $('verify-intro'),
+    verifyTitleEl: $('verify-title'),
+    labelVerifyCode: $('label-verify-code'),
+    labelVerifyDatetime: $('label-verify-datetime'),
+    labelVerifyLat: $('label-verify-lat'),
+    labelVerifyLon: $('label-verify-lon'),
+    verifyCodeInput: $('verify-code-input'),
+    verifyDatetimeInput: $('verify-datetime-input'),
+    verifyLatInput: $('verify-lat-input'),
+    verifyLonInput: $('verify-lon-input'),
+    verifyFillLastBtn: $('verify-fill-last-btn'),
+    verifyRunBtn: $('verify-run-btn'),
+    verifyResult: $('verify-result')
   };
 }

@@ -30,6 +30,7 @@ import { bindMenusAndGestures } from './app/wiring/menus.js';
 import { bindCaptureControls } from './app/wiring/capture-wiring.js';
 import { bindGalleryEvents } from './app/wiring/gallery-wiring.js';
 import { bindLifecycle } from './app/wiring/lifecycle.js';
+import { bindVerifyWiring } from './app/wiring/verify-wiring.js';
 
 console.log(`📱 Lens Light v${APP_VERSION}`);
 
@@ -65,7 +66,8 @@ function initializeApp() {
   bindGalleryEvents(dom, env);
   bindProjectEvents(dom, env);
   bindMenusAndGestures(dom, env);
-  bindLifecycle(dom);
+  bindLifecycle(dom, env);
+  bindVerifyWiring(dom);
 
   updateAppVh();
   loadSettings(dom);

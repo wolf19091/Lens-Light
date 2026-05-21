@@ -23,7 +23,8 @@ const ARABIC_LABELS = Object.freeze({
   headingLabel: 'الاتجاه',
   accuracyLabel: 'الدقة',
   weatherLabel: 'الطقس',
-  filterLabel: 'المرشح'
+  filterLabel: 'المرشح',
+  photoCodeLabel: 'رمز الصورة'
 });
 
 const ENGLISH_LABELS = Object.freeze({
@@ -46,7 +47,8 @@ const ENGLISH_LABELS = Object.freeze({
   headingLabel: 'Heading',
   accuracyLabel: 'Accuracy',
   weatherLabel: 'Weather',
-  filterLabel: 'Filter'
+  filterLabel: 'Filter',
+  photoCodeLabel: 'Photo Code'
 });
 
 export function getCaptureText() {

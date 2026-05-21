@@ -9,13 +9,8 @@ function setMenuOpen(button, menu, open) {
   button?.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
-function applyOptionSelection(options, selectedOption) {
-  for (const option of options) {
-    const isSelected = option === selectedOption;
-    option.classList.toggle('selected', isSelected);
-    option.setAttribute('aria-checked', isSelected ? 'true' : 'false');
-    option.tabIndex = isSelected ? 0 : -1;
-  }
+function menuRadios(menu) {
+  return Array.from(menu?.querySelectorAll('input[type="radio"]') ?? []);
 }
 
 function bindTimerMenu(dom, { showStatus }) {
@@ -24,13 +19,11 @@ function bindTimerMenu(dom, { showStatus }) {
     setMenuOpen(dom.timerBtn, dom.timerMenu, willOpen);
   });
 
-  const options = Array.from(document.querySelectorAll('.timer-option'));
-  for (const opt of options) {
-    opt.addEventListener('click', () => {
-      const time = parseInt(opt.dataset.time, 10) || 0;
+  for (const radio of menuRadios(dom.timerMenu)) {
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      const time = parseInt(radio.value, 10) || 0;
       state.featureState.timerDelay = time;
-
-      applyOptionSelection(options, opt);
 
       dom.timerBtn?.classList.toggle('active', time > 0);
       setMenuOpen(dom.timerBtn, dom.timerMenu, false);
@@ -46,13 +39,11 @@ function bindFilterMenu(dom, { showStatus }) {
     setMenuOpen(dom.filterBtn, dom.filterMenu, willOpen);
   });
 
-  const options = Array.from(document.querySelectorAll('.filter-option'));
-  for (const opt of options) {
-    opt.addEventListener('click', () => {
-      const filter = opt.dataset.filter || 'normal';
+  for (const radio of menuRadios(dom.filterMenu)) {
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      const filter = radio.value || 'normal';
       state.featureState.currentFilter = filter;
-
-      applyOptionSelection(options, opt);
 
       dom.filterBtn?.classList.toggle('active', filter !== 'normal');
       setMenuOpen(dom.filterBtn, dom.filterMenu, false);

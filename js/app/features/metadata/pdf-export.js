@@ -287,6 +287,9 @@ async function renderJsPdfDocument(payload) {
 
   for (let index = 0; index < payload.items.length; index += 1) {
     await renderRecordPage(pdf, payload.items[index], payload, pageWidth, pageHeight, index === 0, logo);
+    // Yield so the browser can paint progress and reclaim transient buffers
+    // before we start the next page — keeps the tab responsive on big batches.
+    if (index + 1 < payload.items.length) await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
   pdf.save(`lenslight_export_${getExportTimestamp()}.pdf`);
@@ -313,7 +316,13 @@ export async function exportPreparedPdf({ showStatus } = {}) {
     fallbackWindow.document.close();
   }
 
-  const items = await hydrateExportImages(payload.items, payload.options.includeImages);
+  // 1600px longest edge prints crisply at 120mm on A4 (~340dpi) without dragging
+  // hundreds of MB of full-res base64 strings through the pipeline.
+  const items = await hydrateExportImages(payload.items, payload.options.includeImages, {
+    maxDimension: 1600,
+    quality: 0.82,
+    onProgress: (done, total) => showStatus?.(`Preparing PDF... ${done}/${total}`, 1500)
+  });
   const hydratedPayload = { ...payload, items };
 
   try {

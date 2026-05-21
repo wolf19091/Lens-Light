@@ -1,7 +1,7 @@
 // Service workers can be loaded as classic scripts in some browsers/cached registrations.
 // Keep these constants local to avoid ESM import parsing failures.
 // NOTE: keep APP_VERSION in sync with js/version.js (single source of truth at build time).
-const APP_VERSION = '7.2.0';
+const APP_VERSION = '8.0.3';
 const CACHE_PREFIX = 'lenslight';
 const CACHE_NAME = `${CACHE_PREFIX}-v${APP_VERSION}`;
 
@@ -53,9 +53,11 @@ const ASSETS = [
   './js/app/wiring/capture-wiring.js',
   './js/app/wiring/gallery-wiring.js',
   './js/app/wiring/lifecycle.js',
+  './js/app/wiring/verify-wiring.js',
   './js/app/features/comparison.js',
   './js/app/features/focus.js',
   './js/app/features/hdr.js',
+  './js/app/features/photocode.js',
   './js/app/features/metadata.js',
   './js/app/features/metadata/format.js',
   './js/app/features/metadata/source.js',
@@ -129,7 +131,11 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
+          // Only the root/index navigation seeds the offline shell — caching
+          // any other same-origin .html under './index.html' would clobber it.
+          const isShell = url.pathname === '/' || url.pathname.endsWith('/index.html');
           if (
+            isShell &&
             response &&
             response.status === 200 &&
             event.request.method === 'GET' &&

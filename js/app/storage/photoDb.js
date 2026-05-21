@@ -152,7 +152,6 @@ export async function dbGetAllPhotosMeta() {
       result.push(meta);
       cursor.continue();
     };
-    req.onerror = () => reject(req.error || new Error('IndexedDB cursor failed'));
   });
 }
 

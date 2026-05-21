@@ -6,6 +6,7 @@ import { playBeep, playCameraShutter } from './audio.js';
 import { ensureLogoLoaded } from './overlays/canvas-utils.js';
 import { drawReportOverlay, drawHeaderBand } from './overlays/report.js';
 import { drawCompassBadgeOverlay } from './overlays/compass.js';
+import { formatLocalMinute, generatePhotoCode } from '../features/photocode.js';
 
 const PORTRAIT_MAX_DIMENSION = 4096;
 const LANDSCAPE_MAX_DIMENSION = 4096;
@@ -19,7 +20,6 @@ const STORAGE_FULL_THRESHOLD_PCT = 95;
 const STORAGE_LOW_THRESHOLD_PCT = 75;
 const STORAGE_FULL_WARN_PCT = 90;
 const DEFAULT_WHITE_BALANCE = 5500;
-const MIN_JPEG_QUALITY = 0.95;
 
 const FILTER_CSS = Object.freeze({
   bw: 'grayscale(1)',
@@ -252,7 +252,7 @@ async function applyEnhancementFilters(canvas, ctx) {
   }
 }
 
-async function composeOverlays(ctx, canvas) {
+async function composeOverlays(ctx, canvas, photoCode = '') {
   const { settings } = state;
   const wantsHeader = settings.watermark || settings.showData;
   const logoOk = wantsHeader ? await ensureLogoLoaded(800) : false;
@@ -260,17 +260,34 @@ async function composeOverlays(ctx, canvas) {
   // Webpage-style masthead at the top.
   if (wantsHeader) drawHeaderBand(ctx, canvas, logoOk);
 
-  // Bottom information card (location, coordinates, accuracy/altitude/weather).
-  if (settings.showData) drawReportOverlay(ctx, canvas, logoOk);
+  // Bottom information card (location, coordinates, accuracy/altitude/weather,
+  // and the verification photo code if available).
+  if (settings.showData) drawReportOverlay(ctx, canvas, logoOk, { photoCode });
 
   // Compass chip on the right, positioned just below the masthead.
   if (settings.showCompass) drawCompassBadgeOverlay(ctx, canvas);
 }
 
-async function persistCapturedPhoto(blob, { showStatus, onCaptured }) {
-  const photo = {
-    id: Date.now(),
-    timestamp: new Date().toISOString(),
+/**
+ * Builds the metadata object that both (a) feeds the photo-code hash and
+ * (b) gets persisted to IndexedDB. Keeping these on a single object is what
+ * makes the code re-derivable later — any drift between the values stamped
+ * onto the watermark and the values stored alongside the blob would make
+ * verification fail for every photo.
+ */
+function buildCapturedPhotoMetadata() {
+  const capturedAt = new Date();
+  return {
+    // Timestamp base preserves sort order; the monotonic guard prevents
+    // same-millisecond and clock-rewind key collisions. Stays a Number,
+    // so dataset.photoId / id-sort / keyPath handling is unchanged.
+    id: Math.max(capturedAt.getTime(), (state.lastCapturedPhotoId || 0) + 1),
+    timestamp: capturedAt.toISOString(),
+    // Local "YYYY-MM-DD HH:MM" captured here so the photo-code hash stays
+    // stable even if the device's timezone changes later (e.g. user travels).
+    // Without this, recomputing the code in a different TZ would silently
+    // mismatch every existing photo.
+    localTimestampMinute: formatLocalMinute(capturedAt),
     lat: state.currentLat,
     lon: state.currentLon,
     alt: state.currentAlt,
@@ -279,8 +296,14 @@ async function persistCapturedPhoto(blob, { showStatus, onCaptured }) {
     projectName: state.settings.projectName,
     location: state.settings.customLocation,
     comment: '',
-    mime: blob.type || 'image/jpeg',
     filter: state.featureState.currentFilter
+  };
+}
+
+async function persistCapturedPhoto(blob, photoMeta, { showStatus, onCaptured }) {
+  const photo = {
+    ...photoMeta,
+    mime: blob.type || 'image/jpeg'
   };
 
   try {
@@ -354,12 +377,22 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
   ctx.filter = 'none';
 
   await applyEnhancementFilters(dom.canvas, ctx);
-  await composeOverlays(ctx, dom.canvas);
 
-  const jpegQuality = Math.max(MIN_JPEG_QUALITY, state.settings.imageQuality || 0.95);
+  // Lock in the metadata BEFORE drawing the overlay so the code stamped onto
+  // the image is the exact code we save next to the blob — otherwise the
+  // timestamp would tick between the two reads and verification would fail.
+  const photoMeta = buildCapturedPhotoMetadata();
+  const photoCode = await generatePhotoCode(photoMeta);
+  photoMeta.photoCode = photoCode;
+
+  await composeOverlays(ctx, dom.canvas, photoCode);
+
+  // Honor the user's chosen quality (1.0 / 0.9 / 0.8); fall back only if invalid.
+  const q = Number(state.settings.imageQuality);
+  const jpegQuality = Number.isFinite(q) && q > 0 ? q : 0.95;
   const blob = await canvasToJpegBlob(dom.canvas, jpegQuality);
 
-  await persistCapturedPhoto(blob, { showStatus, onCaptured });
+  await persistCapturedPhoto(blob, photoMeta, { showStatus, onCaptured });
 }
 
 export async function performCapture(dom, { showStatus, onCaptured, onBurstUi } = {}) {

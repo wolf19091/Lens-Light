@@ -247,7 +247,14 @@ export async function exportPreparedExcel({ showStatus } = {}) {
     return;
   }
 
-  const items = await hydrateExportImages(payload.items, payload.options.includeImages);
+  // Excel only ever displays each photo up to MAX_IMAGE_WIDTH (320px), so 800px
+  // longest edge is more than enough for sharp rendering with massively reduced
+  // memory pressure compared to the original camera-resolution JPEGs.
+  const items = await hydrateExportImages(payload.items, payload.options.includeImages, {
+    maxDimension: 800,
+    quality: 0.8,
+    onProgress: (done, total) => showStatus?.(`Preparing Excel... ${done}/${total}`, 1500)
+  });
   const hydratedPayload = { ...payload, items };
   const filenameBase = `lenslight_export_${getExportTimestamp()}`;
 

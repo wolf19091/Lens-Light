@@ -6,7 +6,7 @@ export function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   if (window.location.protocol === 'file:') return;
 
-  window.addEventListener('load', () => {
+  const register = () => {
     navigator.serviceWorker
       .register('./sw.js', { updateViaCache: 'none' })
       .then((reg) => {
@@ -33,5 +33,15 @@ export function registerServiceWorker() {
       if (isDebugModeEnabled()) console.log('🔄 Controller changed, reloading...');
       window.location.reload();
     });
-  });
+  };
+
+  // registerServiceWorker() is called from bootstrap() after async IndexedDB
+  // work, by which point the 'load' event has usually already fired — so a
+  // bare addEventListener('load', …) would never run. Register now if the
+  // document is already loaded; otherwise wait for 'load'.
+  if (document.readyState === 'complete') {
+    register();
+  } else {
+    window.addEventListener('load', register, { once: true });
+  }
 }

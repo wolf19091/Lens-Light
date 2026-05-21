@@ -4,7 +4,6 @@ import { getEnglishLocationLabel } from './gps.js';
 
 const GEOCODE_TIMEOUT_MS = 10_000;
 const GEOCODE_CACHE_LIMIT = 50;
-const BIGDATACLOUD_URL = 'https://api.bigdatacloud.net/data/reverse-geocode-client';
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/reverse';
 
 function getCacheKey(lat, lon) {
@@ -34,42 +33,48 @@ async function fetchWithTimeout(url, init = {}) {
   }
 }
 
-function joinAddressParts({ city, region, country }) {
-  const parts = [];
-  if (city) parts.push(city);
-  if (region && region !== city && !String(city).includes(region)) parts.push(region);
-  if (country && parts.length < 2) parts.push(country);
+// Max location components to include before the country (e.g. town, governorate, region).
+const MAX_ADDRESS_PARTS = 3;
 
-  const rawLabel = parts.filter(Boolean).join(', ');
-  if (!rawLabel) return '';
-  const englishLabel = getEnglishLocationLabel(rawLabel);
-  return englishLabel === 'Unknown' ? '' : englishLabel;
-}
+// Nominatim `address` keys from most specific to least, walked in order to
+// build the label. Street-level keys (road, house_number, postcode, ...) are
+// intentionally excluded.
+const ADDRESS_FIELD_ORDER = [
+  'neighbourhood', 'suburb', 'quarter', 'residential',
+  'hamlet', 'isolated_dwelling', 'croft',
+  'village', 'town', 'city',
+  'municipality',
+  'city_district', 'district', 'borough',
+  'county',
+  'state_district',
+  'state', 'province', 'region'
+];
 
-async function reverseGeocodeWithBigDataCloud(lat, lon) {
-  const url = `${BIGDATACLOUD_URL}?latitude=${lat}&longitude=${lon}&localityLanguage=en`;
-  const res = await fetchWithTimeout(url, { method: 'GET', headers: { Accept: 'application/json' } });
-
-  if (!res.ok) {
-    if (res.status === 429) {
-      console.warn('⚠️ Geocoding rate limited');
-      return '';
-    }
-    throw new Error(`Reverse geocode failed: ${res.status}`);
+/**
+ * Builds a "Place, District, Region, Country" label from a Nominatim `address`
+ * object. Drops empty/Arabic/mojibake values and skips any part already implied
+ * by a kept one (e.g. "Riyadh" vs "Riyadh Region").
+ */
+function buildAddressLabel(addr) {
+  const kept = [];
+  for (const field of ADDRESS_FIELD_ORDER) {
+    const value = getEnglishLocationLabel(addr[field]);
+    if (value === 'Unknown') continue;
+    if (kept.some(p => p.includes(value) || value.includes(p))) continue;
+    kept.push(value);
+    if (kept.length >= MAX_ADDRESS_PARTS) break;
   }
 
-  const data = await res.json();
-  if (isDebugModeEnabled()) console.log('🗺️ Geocoding result (BDC):', data);
+  const countryLabel = getEnglishLocationLabel(addr.country);
+  if (countryLabel !== 'Unknown' && !kept.some(p => p.includes(countryLabel))) {
+    kept.push(countryLabel);
+  }
 
-  return joinAddressParts({
-    city: data.city || data.locality,
-    region: data.principalSubdivision,
-    country: data.countryName
-  });
+  return kept.join(', ');
 }
 
 async function reverseGeocodeWithNominatim(lat, lon) {
-  const url = `${NOMINATIM_URL}?format=jsonv2&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1&accept-language=en`;
+  const url = `${NOMINATIM_URL}?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1&accept-language=en`;
   const res = await fetchWithTimeout(url, {
     method: 'GET',
     headers: { Accept: 'application/json', 'Accept-Language': 'en' }
@@ -77,19 +82,14 @@ async function reverseGeocodeWithNominatim(lat, lon) {
 
   if (!res.ok) throw new Error(`Nominatim reverse geocode failed: ${res.status}`);
   const data = await res.json();
-  const addr = data?.address || {};
+  if (isDebugModeEnabled()) console.log('🗺️ Geocoding result (Nominatim):', data);
 
-  return joinAddressParts({
-    city: addr.city || addr.town || addr.village || addr.hamlet || addr.municipality || '',
-    region: addr.state || addr.county || addr.region || '',
-    country: addr.country || ''
-  });
+  return buildAddressLabel(data?.address || {});
 }
 
 /**
- * Reverse-geocodes (lat, lon) into a short city/region/country label. Tries
- * BigDataCloud (no API key, designed for client-side use) first, then
- * Nominatim (OSM) as a structural fallback. Cached by 3-decimal grid cell.
+ * Reverse-geocodes (lat, lon) into a short city/region/country label using
+ * Nominatim (OSM). Cached by 3-decimal grid cell.
  */
 export async function reverseGeocodeFromWeb(lat, lon) {
   const cacheKey = getCacheKey(lat, lon);
@@ -97,18 +97,11 @@ export async function reverseGeocodeFromWeb(lat, lon) {
   if (cached !== undefined) return cached;
 
   try {
-    const label = await reverseGeocodeWithBigDataCloud(lat, lon);
+    const label = await reverseGeocodeWithNominatim(lat, lon);
     writeCache(cacheKey, label);
     return label;
   } catch (e) {
-    if (e?.name !== 'AbortError') console.warn('reverseGeocodeFromWeb failed, trying fallback', e);
-    try {
-      const fallbackLabel = await reverseGeocodeWithNominatim(lat, lon);
-      if (fallbackLabel) writeCache(cacheKey, fallbackLabel);
-      return fallbackLabel;
-    } catch (fallbackError) {
-      if (fallbackError?.name !== 'AbortError') console.warn('reverseGeocode fallback failed', fallbackError);
-      return '';
-    }
+    if (e?.name !== 'AbortError') console.warn('reverseGeocodeFromWeb failed', e);
+    return '';
   }
 }

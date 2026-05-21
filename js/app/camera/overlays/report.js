@@ -20,7 +20,6 @@ import {
    Keep in sync with css/style.css.
    ------------------------------------------------------------- */
 const COLOR_PRIMARY = '#0066cc';
-const COLOR_PRIMARY_ON_DARK = '#2997ff';
 const COLOR_INK = '#1d1d1f';
 const COLOR_INK_MUTED_80 = '#333333';
 const COLOR_INK_MUTED_48 = '#7a7a7a';
@@ -246,16 +245,6 @@ export function drawHeaderBand(ctx, canvas, logoOk = false) {
   ctx.restore();
 }
 
-/**
- * Backwards-compatible alias used by existing callers. Now draws the
- * header band rather than the old in-line brand pill.
- */
-export function addWatermarkToCanvas(ctx, _width, logoOk = false) {
-  // Some callers don't pass `logoOk`; assume the logo is ready since the
-  // capture pipeline awaits ensureLogoLoaded() before composing overlays.
-  drawHeaderBand(ctx, ctx.canvas, logoOk || logoImg.naturalWidth > 0);
-}
-
 function measureWrappedLines(ctx, font, text, width, maxLines) {
   ctx.save();
   ctx.font = font;
@@ -264,7 +253,7 @@ function measureWrappedLines(ctx, font, text, width, maxLines) {
   return wrapped;
 }
 
-function computeReportLayout(ctx, canvas, text) {
+function computeReportLayout(ctx, canvas, text, options = {}) {
   const isRtl = state.currentLang === 'ar';
   const portraitWeight = canvas.height / Math.max(canvas.width, 1);
   const compactMode = portraitWeight > 1.45;
@@ -283,6 +272,7 @@ function computeReportLayout(ctx, canvas, text) {
   const textRight = isRtl ? mapX - gap : cardX + cardWidth - innerPadding;
   const textWidth = Math.max(96, textRight - textLeft);
   const textAnchorX = isRtl ? textRight : textLeft;
+  const photoCode = String(options.photoCode || '').trim();
 
   // SF Pro Display headline + SF Pro Text body, per DESIGN.md
   const titleSize = clamp(canvas.width * (compactMode ? 0.04 : 0.036), 18, 72);
@@ -298,6 +288,7 @@ function computeReportLayout(ctx, canvas, text) {
     ? `${text.latLabel} ${state.currentLat.toFixed(6)}, ${text.longLabel} ${state.currentLon.toFixed(6)}${state.currentShortAddress ? ` | ${state.currentShortAddress}` : ''}`
     : text.noMap;
   const footerText = buildOverlayFooterText(text);
+  const photoCodeText = photoCode ? `${text.photoCodeLabel}: ${photoCode}` : '';
 
   const titleLines = measureWrappedLines(
     ctx, `600 ${titleSize}px ${FONT_DISPLAY}`,
@@ -310,6 +301,13 @@ function computeReportLayout(ctx, canvas, text) {
     ctx, `400 ${bodySize}px ${FONT_TEXT}`,
     coordinatesText, textWidth, 1
   );
+  // Photo code uses a slightly smaller, mono-styled font and never wraps —
+  // the 14-char code is short enough to always fit on one line.
+  const codeFontSize = clamp(canvas.width * 0.021, 12, 40);
+  const codeLineHeight = codeFontSize * 1.3;
+  const codeLines = photoCodeText
+    ? measureWrappedLines(ctx, `600 ${codeFontSize}px ${FONT_TEXT}`, photoCodeText, textWidth, 1)
+    : [];
   const timeLines = measureWrappedLines(
     ctx, `400 ${noteSize}px ${FONT_TEXT}`,
     timestampText, textWidth, 1
@@ -322,13 +320,15 @@ function computeReportLayout(ctx, canvas, text) {
   let textContentHeight = titleLines.length * titleLineHeight;
   if (addressLines.length > 0) textContentHeight += bodySize * 0.4 + addressLines.length * bodyLineHeight;
   if (coordsLines.length > 0) textContentHeight += bodySize * 0.25 + coordsLines.length * bodyLineHeight;
+  if (codeLines.length > 0) textContentHeight += codeFontSize * 0.35 + codeLines.length * codeLineHeight;
   if (timeLines.length > 0) textContentHeight += noteSize * 0.3 + timeLines.length * noteLineHeight;
   if (footerLines.length > 0) textContentHeight += noteSize * 0.3 + footerLines.length * noteLineHeight;
 
   const cardHeight = clamp(
     innerPadding * 2 + Math.max(mapSize, textContentHeight),
     compactMode ? 132 : 154,
-    compactMode ? canvas.height * 0.30 : canvas.height * 0.34
+    // Slightly taller upper bound now that the card carries an extra line.
+    compactMode ? canvas.height * 0.32 : canvas.height * 0.36
   );
   const cardY = canvas.height - cardHeight - margin;
   const mapY = cardY + (cardHeight - mapSize) / 2;
@@ -337,8 +337,9 @@ function computeReportLayout(ctx, canvas, text) {
     isRtl, compactMode, margin, cardX, cardY, cardWidth, cardHeight, innerPadding,
     mapX, mapY, mapSize,
     textLeft, textRight, textAnchorX, textWidth,
-    titleSize, bodySize, noteSize, titleLineHeight, bodyLineHeight, noteLineHeight,
-    titleLines, addressLines, coordsLines, timeLines, footerLines
+    titleSize, bodySize, noteSize, codeFontSize,
+    titleLineHeight, bodyLineHeight, noteLineHeight, codeLineHeight,
+    titleLines, addressLines, coordsLines, codeLines, timeLines, footerLines
   };
 }
 
@@ -365,9 +366,9 @@ function drawReportCardBackground(ctx, _canvas, layout) {
 function drawReportTextBlock(ctx, layout) {
   const {
     isRtl, cardY, innerPadding, textAnchorX,
-    titleSize, bodySize, noteSize,
-    titleLineHeight, bodyLineHeight, noteLineHeight,
-    titleLines, addressLines, coordsLines, timeLines, footerLines
+    titleSize, bodySize, noteSize, codeFontSize,
+    titleLineHeight, bodyLineHeight, noteLineHeight, codeLineHeight,
+    titleLines, addressLines, coordsLines, codeLines, timeLines, footerLines
   } = layout;
 
   ctx.save();
@@ -397,6 +398,16 @@ function drawReportTextBlock(ctx, layout) {
     cursorY = drawTextLines(ctx, coordsLines, textAnchorX, cursorY, bodyLineHeight);
   }
 
+  // Photo code — semi-bold, ink-on-dark color so it reads as a tamper-evident
+  // receipt rather than ambient text. Lives directly under the coordinates so
+  // anyone reading the watermark can mentally pair the location with its code.
+  if (codeLines.length > 0) {
+    cursorY += codeFontSize * 0.35;
+    ctx.fillStyle = COLOR_INK;
+    ctx.font = `600 ${codeFontSize}px ${FONT_TEXT}`;
+    cursorY = drawTextLines(ctx, codeLines, textAnchorX, cursorY, codeLineHeight);
+  }
+
   // Timestamp + footer — caption, ink-muted-48
   ctx.fillStyle = COLOR_INK_MUTED_48;
   ctx.font = `400 ${noteSize}px ${FONT_TEXT}`;
@@ -409,14 +420,11 @@ function drawReportTextBlock(ctx, layout) {
     drawTextLines(ctx, footerLines, textAnchorX, cursorY, noteLineHeight);
   }
   ctx.restore();
-
-  // Use the unused param to keep ESLint quiet on minimal builds.
-  void COLOR_PRIMARY_ON_DARK;
 }
 
-export function drawReportOverlay(ctx, canvas, _logoOk = false) {
+export function drawReportOverlay(ctx, canvas, _logoOk = false, options = {}) {
   const text = getCaptureText();
-  const layout = computeReportLayout(ctx, canvas, text);
+  const layout = computeReportLayout(ctx, canvas, text, options);
 
   drawReportCardBackground(ctx, canvas, layout);
   drawMiniMapTile(ctx, layout.mapX, layout.mapY, layout.mapSize, 8);

@@ -78,7 +78,7 @@ export function updateWeatherDisplay(dom) {
 export async function fetchWeatherData(lat, lon, dom) {
   const now = Date.now();
   if (now - state.lastWeatherFetch < WEATHER_REFRESH_MS) return;
-  if (!navigator.onLine || !lat || !lon) return;
+  if (!navigator.onLine || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
   try {
     const isImperial = state.settings.units === 'imperial';

@@ -1,6 +1,7 @@
 import { state } from '../state.js';
 import { t } from '../core/i18n.js';
 import { dbGetPhoto, dbPutPhoto } from '../storage/photoDb.js';
+import { verifyPhotoCode } from '../features/photocode.js';
 
 function setCommentDisplay(commentEl, text) {
   if (!commentEl) return;
@@ -57,6 +58,34 @@ export async function openPhotoViewer(photoId, dom, { showStatus } = {}) {
   } catch (e) {
     console.error('openPhotoViewer failed', e);
     showStatus?.(t('couldNotOpenPhoto'), 2500);
+  }
+}
+
+/**
+ * Recomputes the photo code from the saved metadata and compares it to the
+ * stamp written at capture time. Surfaces a status toast with the verdict.
+ * Used by the viewer's "Verify Code" action.
+ */
+export async function verifyViewedPhotoCode(photoId, { showStatus } = {}) {
+  const record = await dbGetPhoto(photoId);
+  if (!record) {
+    showStatus?.(t('photoMissing'), 2500);
+    return;
+  }
+  const result = await verifyPhotoCode(record);
+  switch (result.status) {
+    case 'match':
+      showStatus?.(t('codeVerified'), 3000);
+      return;
+    case 'mismatch':
+      // Stay on screen longer so the user can read both codes.
+      showStatus?.(`${t('codeMismatch')}  (${result.actual} ≠ ${result.expected})`, 6000);
+      return;
+    case 'no-code':
+      showStatus?.(t('codeMissing'), 3000);
+      return;
+    default:
+      showStatus?.(t('codeVerifyError'), 3000);
   }
 }
 

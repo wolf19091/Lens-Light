@@ -55,7 +55,30 @@ const translations = {
     projectClosed: '✓ Project closed',
     projectFileMeta: '{count} photo(s)',
     projectReadyForCapture: '📸 {name} ready for capture',
-    projectAddedCount: '✓ Added {count} photo(s) to project'
+    projectAddedCount: '✓ Added {count} photo(s) to project',
+
+    // Photo Code verification
+    verifyCodeAction: '🔐 Verify Code',
+    codeVerified: '✓ Photo code matches the stored metadata',
+    codeMismatch: '⚠️ Photo code does not match the stored metadata',
+    codeMissing: 'ℹ️ This photo has no stored code (captured before the feature)',
+    codeVerifyError: '❌ Could not verify photo code',
+
+    // Manual verifier (control bar)
+    verifyModalTitle: '🔐 Verify Photo Code',
+    verifyIntro: "Enter the values shown on the photo's watermark. The app recomputes the consistency code and tells you whether it matches these values.",
+    verifyLabelCode: '🔐 Photo Code',
+    verifyLabelDatetime: '📅 Date & Time (local)',
+    verifyLabelLat: '📍 Latitude',
+    verifyLabelLon: '📍 Longitude',
+    verifyFillLast: 'Fill from last photo',
+    verifyRun: 'Verify Code',
+    verifyMissingCode: 'ℹ️ Enter the Photo Code from the watermark.',
+    verifyMissingDatetime: 'ℹ️ Enter the date and time shown on the watermark.',
+    verifyMissingCoords: 'ℹ️ Enter the latitude and longitude shown on the watermark.',
+    verifySignatureMatch: '✓ Code matches — these values are internally consistent',
+    verifySignatureMismatch: '⚠️ Code does not match these values',
+    verifyNoLastPhoto: 'ℹ️ No recent photo to copy from. Capture one first.'
   },
   ar: {
     enableCamera: '🎥 تفعيل الكاميرا والمستشعرات',
@@ -110,7 +133,30 @@ const translations = {
     projectClosed: '✓ تم إغلاق المشروع',
     projectFileMeta: '{count} صورة',
     projectReadyForCapture: '📸 {name} جاهز للالتقاط',
-    projectAddedCount: '✓ تمت إضافة {count} صورة إلى المشروع'
+    projectAddedCount: '✓ تمت إضافة {count} صورة إلى المشروع',
+
+    // Photo Code verification
+    verifyCodeAction: '🔐 تحقق من الرمز',
+    codeVerified: '✓ رمز الصورة مطابق للبيانات المحفوظة',
+    codeMismatch: '⚠️ رمز الصورة غير مطابق للبيانات المحفوظة',
+    codeMissing: 'ℹ️ هذه الصورة لا تحتوي على رمز محفوظ',
+    codeVerifyError: '❌ تعذر التحقق من رمز الصورة',
+
+    // Manual verifier (control bar)
+    verifyModalTitle: '🔐 تحقق من رمز الصورة',
+    verifyIntro: 'أدخل القيم الظاهرة على العلامة المائية، وسيعيد التطبيق حساب رمز التطابق ويخبرك إن كان مطابقًا لهذه القيم.',
+    verifyLabelCode: '🔐 رمز الصورة',
+    verifyLabelDatetime: '📅 التاريخ والوقت (محلي)',
+    verifyLabelLat: '📍 خط العرض',
+    verifyLabelLon: '📍 خط الطول',
+    verifyFillLast: 'املأ من آخر صورة',
+    verifyRun: 'تحقق من الرمز',
+    verifyMissingCode: 'ℹ️ أدخل رمز الصورة من العلامة المائية.',
+    verifyMissingDatetime: 'ℹ️ أدخل التاريخ والوقت الظاهرين على العلامة المائية.',
+    verifyMissingCoords: 'ℹ️ أدخل خط العرض وخط الطول الظاهرين على العلامة المائية.',
+    verifySignatureMatch: '✓ الرمز مطابق — هذه القيم متسقة داخليًا',
+    verifySignatureMismatch: '⚠️ الرمز لا يطابق هذه القيم',
+    verifyNoLastPhoto: 'ℹ️ لا توجد صورة حديثة للنسخ منها. التقط صورة أولاً.'
   }
 };
 
@@ -133,14 +179,25 @@ export function setLanguage(lang, dom) {
   if (dom?.permBtn) dom.permBtn.textContent = cameraGranted ? t('enableGPS') : t('enableCamera');
 
   if (dom?.gpsCoordsEl && (/WAITING/i.test(dom.gpsCoordsEl.textContent) || /انتظار/i.test(dom.gpsCoordsEl.textContent))) {
-    dom.gpsCoordsEl.textContent = translations.en.waitingGPS;
+    dom.gpsCoordsEl.textContent = t('waitingGPS');
   }
   if (dom?.locationNameEl && (/Unknown/i.test(dom.locationNameEl.textContent) || /غير معروف/.test(dom.locationNameEl.textContent))) {
-    dom.locationNameEl.textContent = translations.en.locationUnknown;
+    dom.locationNameEl.textContent = t('locationUnknown');
   }
 
   if (dom?.shareSelectedBtn) dom.shareSelectedBtn.textContent = state.currentLang === 'ar' ? '📤 مشاركة المحدد' : '📤 Share Selected';
   if (dom?.downloadSelectedBtn) dom.downloadSelectedBtn.textContent = state.currentLang === 'ar' ? '💾 حفظ المحدد' : '💾 Save Selected';
   if (dom?.deleteSelectedBtn) dom.deleteSelectedBtn.textContent = state.currentLang === 'ar' ? '🗑️ حذف المحدد' : '🗑️ Delete Selected';
   if (dom?.cancelSelectBtn) dom.cancelSelectBtn.textContent = state.currentLang === 'ar' ? 'إلغاء' : 'Cancel';
+  if (dom?.viewerVerifyBtn) dom.viewerVerifyBtn.textContent = t('verifyCodeAction');
+
+  // Manual verifier modal — translate labels + buttons on language switch.
+  if (dom?.verifyTitleEl) dom.verifyTitleEl.textContent = t('verifyModalTitle');
+  if (dom?.verifyIntro) dom.verifyIntro.textContent = t('verifyIntro');
+  if (dom?.labelVerifyCode) dom.labelVerifyCode.textContent = t('verifyLabelCode');
+  if (dom?.labelVerifyDatetime) dom.labelVerifyDatetime.textContent = t('verifyLabelDatetime');
+  if (dom?.labelVerifyLat) dom.labelVerifyLat.textContent = t('verifyLabelLat');
+  if (dom?.labelVerifyLon) dom.labelVerifyLon.textContent = t('verifyLabelLon');
+  if (dom?.verifyFillLastBtn) dom.verifyFillLastBtn.textContent = t('verifyFillLast');
+  if (dom?.verifyRunBtn) dom.verifyRunBtn.textContent = t('verifyRun');
 }

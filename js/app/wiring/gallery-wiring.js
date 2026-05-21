@@ -14,7 +14,8 @@ import {
   shareLastCapturedPhoto,
   shareSelectedPhotos,
   updatePhotoComment,
-  updateSelectAllButton
+  updateSelectAllButton,
+  verifyViewedPhotoCode
 } from '../gallery/gallery.js';
 import { dbGetPhoto } from '../storage/photoDb.js';
 import { updateComparisonButton } from '../features/comparison.js';
@@ -137,6 +138,11 @@ function bindPhotoViewer(dom, env) {
   dom.viewerCommentBtn?.addEventListener('click', async () => {
     if (!state.viewedPhotoId) return;
     await updatePhotoComment(state.viewedPhotoId, dom, { showStatus });
+  });
+
+  dom.viewerVerifyBtn?.addEventListener('click', async () => {
+    if (!state.viewedPhotoId) return;
+    await verifyViewedPhotoCode(state.viewedPhotoId, { showStatus });
   });
 
   dom.viewerDeleteBtn?.addEventListener('click', async () => {
