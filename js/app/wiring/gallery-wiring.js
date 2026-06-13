@@ -3,6 +3,7 @@ import { t } from '../core/i18n.js';
 import { isTouchPrimaryInput } from '../core/utils.js';
 import {
   closePhotoViewer,
+  navigatePhoto,
   deleteSelectedPhotos,
   downloadSelectedPhotos,
   enterSelectMode,
@@ -107,6 +108,8 @@ function bindPhotoViewer(dom, env) {
   const { showStatus, galleryObserver } = env;
 
   dom.closePhotoViewerBtn?.addEventListener('click', () => closePhotoViewer(dom));
+  dom.viewerPrevBtn?.addEventListener('click', () => navigatePhoto(-1, dom, env));
+  dom.viewerNextBtn?.addEventListener('click', () => navigatePhoto(1, dom, env));
 
   dom.viewerShareBtn?.addEventListener('click', async () => {
     if (!state.viewedPhotoId) return;

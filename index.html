@@ -21,7 +21,7 @@
         the double-tap ripple). Removing it would require a sweeping JS refactor.
         All static inline style="" attributes have been moved to css/style.css.
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data:; connect-src 'self' https://nominatim.openstreetmap.org https://api.open-meteo.com https://cdn.jsdelivr.net; worker-src 'self'; manifest-src 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' blob: data: https://tile.openstreetmap.org https://*.tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://nominatim.openstreetmap.org https://api.open-meteo.com https://cdn.jsdelivr.net; worker-src 'self'; manifest-src 'self'">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/svg+xml" href="logo-max-ar-inv.svg">
     <link rel="apple-touch-icon" href="logo-max-ar-inv.svg">
@@ -339,6 +339,11 @@
             </label>
         </div>
 
+        <div class="setting-item">
+            <label id="label-reenable-perms">🎥 Camera & Location Access</label>
+            <button class="action-btn" id="reenable-permissions-btn" type="button">Re-enable Permissions</button>
+        </div>
+
         <div class="setting-item settings-version-row">
             <div id="settings-version-display" class="settings-version-display">
                 Lens Light v<span id="settings-version-number">--</span>
@@ -394,6 +399,7 @@
         <div class="gallery-header">
             <h2 id="gallery-title"><span id="gallery-title-text">📷 Gallery</span> (<span id="gallery-count">0</span>)</h2>
             <div class="actions-inline">
+                <button class="action-btn" id="map-view-btn" type="button">🗺️ Map</button>
                 <button class="action-btn" id="export-metadata-btn" type="button">Prepare Export</button>
                 <button class="action-btn is-hidden" id="select-mode-btn" type="button">Select</button>
                 <button class="close-btn" id="close-gallery" aria-label="Close gallery" type="button">Close</button>
@@ -408,6 +414,15 @@
             <button class="action-btn" id="cancel-select-btn" type="button">Cancel</button>
         </div>
         <div class="gallery-grid" id="gallery-grid" role="list" aria-label="Photo gallery"></div>
+    </div>
+
+    <!-- Map View Modal -->
+    <div id="map-modal" role="dialog" aria-labelledby="map-title" aria-hidden="true">
+        <div class="gallery-header">
+            <h2 id="map-title"><span id="map-title-text">🗺️ Photo Map</span> (<span id="map-photo-count">0</span>)</h2>
+            <button class="close-btn" id="close-map" aria-label="Close map" type="button">Close</button>
+        </div>
+        <div id="map-container" role="application" aria-label="Map of photo locations"></div>
     </div>
 
     <!-- Export Preparation Modal -->
@@ -456,45 +471,49 @@
     </div>
 
     <!-- QR Scanner -->
-    <div id="qr-scanner" role="dialog" aria-labelledby="qr-scanner-title" aria-hidden="true">
-        <div class="gallery-header">
-            <h2 id="qr-scanner-title">⊡ QR Code Scanner</h2>
-            <div class="actions-inline">
-                <button class="action-btn" id="qr-flashlight-toggle" title="Toggle flashlight" aria-label="Toggle flashlight" type="button">🔦</button>
-                <button class="close-btn" id="close-qr-scanner" aria-label="Close QR scanner" type="button">Close</button>
+    <template id="qr-scanner-template">
+        <div id="qr-scanner" role="dialog" aria-labelledby="qr-scanner-title" aria-hidden="true">
+            <div class="gallery-header">
+                <h2 id="qr-scanner-title">⊡ QR Code Scanner</h2>
+                <div class="actions-inline">
+                    <button class="action-btn" id="qr-flashlight-toggle" title="Toggle flashlight" aria-label="Toggle flashlight" type="button">🔦</button>
+                    <button class="close-btn" id="close-qr-scanner" aria-label="Close QR scanner" type="button">Close</button>
+                </div>
+            </div>
+            <div id="qr-scanner-viewport">
+                <canvas id="qr-canvas" class="is-hidden"></canvas>
+                <div class="qr-scan-frame">
+                    <div class="qr-scan-line"></div>
+                </div>
+                <div id="qr-result" class="is-hidden"></div>
+            </div>
+            <div id="qr-history-panel">
+                <div class="qr-history-header">Recent Scans</div>
+                <div id="qr-history"></div>
             </div>
         </div>
-        <div id="qr-scanner-viewport">
-            <canvas id="qr-canvas" class="is-hidden"></canvas>
-            <div class="qr-scan-frame">
-                <div class="qr-scan-line"></div>
-            </div>
-            <div id="qr-result" class="is-hidden"></div>
-        </div>
-        <div id="qr-history-panel">
-            <div class="qr-history-header">Recent Scans</div>
-            <div id="qr-history"></div>
-        </div>
-    </div>
+    </template>
 
     <!-- Photo Comparison Mode -->
-    <div id="comparison-mode" role="dialog" aria-labelledby="comparison-title" aria-hidden="true">
-        <div class="gallery-header">
-            <h2 id="comparison-title">🔍 Compare Photos</h2>
-            <button class="close-btn" id="close-comparison" aria-label="Close comparison" type="button">Close</button>
-        </div>
-        <div class="comparison-container">
-            <div class="comparison-photo" id="comparison-left">
-                <img alt="First photo" />
-                <div class="photo-label">Photo 1</div>
+    <template id="comparison-mode-template">
+        <div id="comparison-mode" role="dialog" aria-labelledby="comparison-title" aria-hidden="true">
+            <div class="gallery-header">
+                <h2 id="comparison-title">🔍 Compare Photos</h2>
+                <button class="close-btn" id="close-comparison" aria-label="Close comparison" type="button">Close</button>
             </div>
-            <div class="comparison-divider"></div>
-            <div class="comparison-photo" id="comparison-right">
-                <img alt="Second photo" />
-                <div class="photo-label">Photo 2</div>
+            <div class="comparison-container">
+                <div class="comparison-photo" id="comparison-left">
+                    <img alt="First photo" />
+                    <div class="photo-label">Photo 1</div>
+                </div>
+                <div class="comparison-divider"></div>
+                <div class="comparison-photo" id="comparison-right">
+                    <img alt="Second photo" />
+                    <div class="photo-label">Photo 2</div>
+                </div>
             </div>
         </div>
-    </div>
+    </template>
 
     <!-- Photo Viewer -->
     <div id="photo-viewer" role="dialog" aria-labelledby="photo-viewer-title" aria-hidden="true">
@@ -504,8 +523,10 @@
             <button class="close-btn" id="close-photo-viewer" aria-label="Close photo viewer" type="button">Close</button>
         </div>
         <div class="photo-viewer-body">
+            <button class="viewer-nav-btn prev-btn" id="viewer-prev-btn" aria-label="Previous photo" type="button">&#9664;</button>
             <img id="photo-viewer-img" alt="Photo preview" />
             <div id="photo-viewer-comment" class="photo-viewer-comment"></div>
+            <button class="viewer-nav-btn next-btn" id="viewer-next-btn" aria-label="Next photo" type="button">&#9654;</button>
         </div>
         <div class="photo-viewer-actions" role="toolbar" aria-label="Photo actions">
             <button class="action-btn" id="viewer-share-btn" type="button">📤 Share</button>

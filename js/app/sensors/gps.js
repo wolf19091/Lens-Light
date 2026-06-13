@@ -74,9 +74,10 @@ export function updateGPS(position, dom, { maybeUpdateCustomLocationFromWeb } = 
   }
   if (dom?.altitudeEl) dom.altitudeEl.textContent = `Alt: ${formatAltitudeLocal(state.currentAlt)}`;
   if (dom?.locationNameEl) {
+    // Short code already shown on the coords line right above — repeating it
+    // here doubled the text and forced wrapping on phone screens.
     const location = getEnglishLocationLabel(state.settings.customLocation);
-    const shortPart = state.currentShortAddress ? ` | Short: ${state.currentShortAddress}` : '';
-    dom.locationNameEl.textContent = `Location: ${location}${shortPart}`;
+    dom.locationNameEl.textContent = `Location: ${location}`;
   }
 
   updateAccuracyDisplay(state.currentAccuracy, dom);

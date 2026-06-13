@@ -7,8 +7,6 @@
 //   --ui-rotate   the angle every glyph counter-rotates by
 //   data-ui-rotation  one of "0" | "90" | "-90" | "180"
 
-const ROTATE_TRANSITION_MS = 350;
-
 function readScreenAngle() {
   // Modern browsers: screen.orientation.angle is 0/90/180/270.
   const angle = window.screen?.orientation?.angle;
@@ -48,5 +46,3 @@ export function bindUiRotation() {
   window.addEventListener('orientationchange', applyUiRotation);
   window.addEventListener('resize', applyUiRotation);
 }
-
-export const UI_ROTATION_TRANSITION_MS = ROTATE_TRANSITION_MS;

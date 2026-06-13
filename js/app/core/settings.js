@@ -200,7 +200,16 @@ export function bindSettingsUi(dom, { showStatus, updateWeatherDisplay, renderGa
       state.selectedPhotos.clear();
       revokeAllPhotoObjectUrls?.();
 
+      // Keep the camera/sensor grant flags across the wipe — the browser still
+      // remembers the actual permission, and losing the flags would make the
+      // app re-show the "Enable Camera" button on every visit after a reset.
+      const { PERMISSION_FLAGS } = await import('../wiring/permissions.js');
+      const preservedFlags = PERMISSION_FLAGS
+        .map((key) => [key, localStorage.getItem(key)])
+        .filter(([, value]) => value !== null);
+
       localStorage.clear();
+      for (const [key, value] of preservedFlags) localStorage.setItem(key, value);
 
       state.settings = {
         ...state.settings,

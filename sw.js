@@ -1,9 +1,15 @@
 // Service workers can be loaded as classic scripts in some browsers/cached registrations.
 // Keep these constants local to avoid ESM import parsing failures.
 // NOTE: keep APP_VERSION in sync with js/version.js (single source of truth at build time).
-const APP_VERSION = '8.0.3';
+const APP_VERSION = '8.1.3';
 const CACHE_PREFIX = 'lenslight';
 const CACHE_NAME = `${CACHE_PREFIX}-v${APP_VERSION}`;
+
+// Map tiles live in their own cache that survives app updates — re-downloading
+// a surveyed area's tiles on every release would defeat offline field use.
+// Capped so the tile cache can't grow without bound.
+const TILE_CACHE = `${CACHE_PREFIX}-tiles-v1`;
+const TILE_CACHE_MAX_ENTRIES = 800;
 
 console.log(`🔧 Service Worker v${APP_VERSION} initializing...`);
 
@@ -67,7 +73,9 @@ const ASSETS = [
   './js/app/features/metadata/xlsx-builder.js',
   './js/app/features/metadata/logo.js',
   './js/app/features/qrscanner.js',
-  './js/app/features/whitebalance.js'
+  './js/app/features/whitebalance.js',
+  './js/app/features/exif.js',
+  './js/app/features/mapview.js'
 ];
 
 // Install: Cache core assets immediately
@@ -95,8 +103,9 @@ self.addEventListener('activate', (event) => {
         return Promise.all(
           cacheNames.map((cache) => {
             // Only remove Lens Light caches from previous versions.
-            // Leave unrelated same-origin caches untouched.
-            if (cache.startsWith(`${CACHE_PREFIX}-`) && cache !== CACHE_NAME) {
+            // Leave unrelated same-origin caches untouched, and keep the
+            // version-independent tile cache so offline maps survive updates.
+            if (cache.startsWith(`${CACHE_PREFIX}-`) && cache !== CACHE_NAME && cache !== TILE_CACHE) {
               console.log('🗑️ Deleting old cache:', cache);
               return caches.delete(cache);
             }
@@ -119,10 +128,44 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// --- Offline map tiles -------------------------------------------------
+// Cache-first: tiles are immutable per zoom/x/y, so once an area has been
+// browsed online it keeps rendering offline. Tile <img> requests are no-cors,
+// which yields opaque responses — those are cacheable but their status reads 0.
+
+async function trimTileCache(cache) {
+  const keys = await cache.keys();
+  if (keys.length <= TILE_CACHE_MAX_ENTRIES) return;
+  // keys() preserves insertion order, so the front of the list is the oldest.
+  const excess = keys.slice(0, keys.length - TILE_CACHE_MAX_ENTRIES);
+  await Promise.all(excess.map((request) => cache.delete(request)));
+}
+
+async function tileCacheFirst(request) {
+  const cache = await caches.open(TILE_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+
+  const response = await fetch(request);
+  if (response && (response.status === 200 || response.type === 'opaque')) {
+    await cache.put(request, response.clone());
+    trimTileCache(cache).catch(() => {});
+  }
+  return response;
+}
+
 // Fetch: Network First, then Cache (Stale-While-Revalidate logic for offline support)
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  
+
+  const isMapTile = url.hostname === 'tile.openstreetmap.org' || url.hostname.endsWith('.tile.openstreetmap.org');
+  if (isMapTile) {
+    event.respondWith(
+      tileCacheFirst(event.request).catch(() => new Response('', { status: 503, statusText: 'Tile unavailable offline' }))
+    );
+    return;
+  }
+
   // HTML navigation stays network-first for fresh updates, but we keep an
   // offline shell in cache so reload works after a successful online load.
   const isHtml = url.pathname === '/' || url.pathname === '/index.html' || url.pathname.endsWith('.html');
@@ -165,9 +208,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
-  // jsQR is vendored locally now, but jspdf and exceljs are still lazy-loaded
-  // from cdn.jsdelivr.net on demand for the export feature. Cache them on the
-  // first successful fetch so subsequent offline exports keep working.
+  // jsQR is vendored locally now, but jspdf, exceljs and leaflet are still
+  // lazy-loaded from cdn.jsdelivr.net on demand. Cache them on the first
+  // successful fetch so subsequent offline exports/maps keep working.
+  // Opaque responses (no-cors script/style loads) are accepted too — their
+  // status reads 0 even on success, and rejecting them would mean those
+  // libraries never get cached at all.
   const isCDN = url.origin === 'https://cdn.jsdelivr.net';
 
   if (isCDN) {
@@ -175,7 +221,7 @@ self.addEventListener('fetch', (event) => {
       caches.match(event.request).then(cached => {
         if (cached) return cached;
         return fetch(event.request).then(response => {
-          if (response && response.status === 200) {
+          if (response && (response.status === 200 || response.type === 'opaque')) {
             const responseToCache = response.clone();
             caches.open(CACHE_NAME).then(cache => {
               cache.put(event.request, responseToCache);

@@ -1,4 +1,5 @@
 import { state } from '../../state.js';
+import { hasGpsCoordinates } from '../../core/utils.js';
 
 const RTL_MARK_REGEX = /[‎‏]/g;
 const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -96,9 +97,7 @@ export function getCardinalDirection(heading) {
 }
 
 export function hasGpsFix() {
-  return Number.isFinite(state.currentLat) &&
-    Number.isFinite(state.currentLon) &&
-    (state.currentLat !== 0 || state.currentLon !== 0);
+  return hasGpsCoordinates(state.currentLat, state.currentLon);
 }
 
 export function formatHeadingValue() {

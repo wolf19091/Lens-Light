@@ -105,27 +105,3 @@ export function initTapToFocus(dom, videoElement) {
     await applyFocusPoint(x, y);
   });
 }
-
-export function getFocusCapabilities() {
-  try {
-    if (!state.videoStream) return null;
-    const track = state.videoStream.getVideoTracks()[0];
-    if (!track) return null;
-
-    const capabilities = track.getCapabilities();
-    const settings = track.getSettings();
-    return {
-      supported: Boolean(capabilities.focusMode),
-      modes: capabilities.focusMode || [],
-      currentMode: settings.focusMode,
-      focusDistance: {
-        min: capabilities.focusDistance?.min,
-        max: capabilities.focusDistance?.max,
-        current: settings.focusDistance
-      }
-    };
-  } catch (err) {
-    console.warn('Could not get focus capabilities:', err);
-    return null;
-  }
-}

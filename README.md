@@ -1,6 +1,6 @@
 # Lens Light - Professional Survey Camera App
 
-[![Version](https://img.shields.io/badge/version-8.0.3-blue.svg)](https://github.com/wolf19091/Lens-Light)
+[![Version](https://img.shields.io/badge/version-8.1.2-blue.svg)](https://github.com/wolf19091/Lens-Light)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 A progressive web app (PWA) for professional survey work with integrated GPS,
@@ -45,6 +45,11 @@ compass, weather, and comprehensive sensor data capture.
 - Delete with confirmation
 - **🔍 Photo Comparison** - Side-by-side comparison of two photos
 - **📊 Metadata Export** - Export photo data as CSV/JSON for reports
+- **🗺️ Map View** - All geotagged photos on an OpenStreetMap layer with a
+  chronological walk-path line; tiles are cached for offline field use
+- **📌 EXIF Geotags** - GPS position, altitude, compass heading, and capture
+  time embedded in the JPEG itself, so downloaded/shared photos stay
+  geotagged in Google Earth, QGIS, and photo managers
 
 ### ⚙️ Settings & Customization
 
@@ -218,7 +223,41 @@ Export photo data as CSV (Excel) or JSON:
 
 ## 📝 Version History
 
-### v8.0.3 (current)
+### v8.1.3 (current)
+
+- 🧹 Codebase cleanup: removed unused exports (focus/QR/white-balance public
+  getters that nothing consumed, a dead single-photo export helper, an unused
+  seeded-RNG and rotation constant), consolidated the GPS-fix check and the
+  debug-mode flag into single shared helpers in `core/utils.js`, and restored
+  a `wiring/diagnostics.js` that had gone missing from disk. No behavior change.
+
+### v8.1.2
+
+- 📱 Phone UX pass: all camera tool buttons enlarged to the 44px touch
+  minimum (rail scrolls instead of shrinking), sheet-header buttons made
+  compact instead of full-width walls, export checkboxes enlarged,
+  duplicated "Short" code removed from the data overlay, and the
+  phone-breakpoint stylesheet re-enabled (was accidentally disabled at 240px)
+
+### v8.1.1
+
+- 🔓 Permissions ask once: grant flags are resynced with the browser's real
+  permission state at startup (Permissions API), survive "Clear All Data",
+  and a new Settings → "Re-enable Permissions" action re-runs the grant flow
+  (with guidance when access is hard-blocked in the browser)
+
+### v8.1.0
+
+- 📌 EXIF geotag embedding: GPS coordinates, altitude, true-north heading and
+  capture time are written into each JPEG (no external library — built-in
+  EXIF writer), so exported photos stay geotagged in GIS tools
+- 🗺️ Map view: gallery photos plotted on OpenStreetMap (Leaflet) with
+  thumbnail popups, "open photo" shortcuts, and a dashed chronological
+  walk-path line; respects the open project's photo scope
+- 📡 Offline map tiles: viewed tiles are cached by the service worker
+  (capped, survives app updates) so maps of surveyed areas work offline
+
+### v8.0.3
 
 - 🛠️ Hardened PWA: corrected manifest icon MIME, vendored jsQR locally,
   removed legacy `js/script.js`

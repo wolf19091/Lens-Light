@@ -54,6 +54,7 @@ export async function openPhotoViewer(photoId, dom, { showStatus } = {}) {
       dom.photoViewer.classList.add('open');
       dom.photoViewer.setAttribute('aria-hidden', 'false');
     }
+    updateNavButtons(dom);
     dom?.closePhotoViewerBtn?.focus?.();
   } catch (e) {
     console.error('openPhotoViewer failed', e);
@@ -105,4 +106,31 @@ export async function updatePhotoComment(photoId, dom, { showStatus } = {}) {
 
   setCommentDisplay(dom?.photoViewerComment, record.comment);
   showStatus?.(t('commentSaved'), 1500);
+}
+
+
+function updateNavButtons(dom) {
+  if (!dom?.viewerPrevBtn || !dom?.viewerNextBtn) return;
+  if (!state.photos || state.photos.length <= 1) {
+    dom.viewerPrevBtn.disabled = true;
+    dom.viewerNextBtn.disabled = true;
+    dom.viewerPrevBtn.style.display = 'none';
+    dom.viewerNextBtn.style.display = 'none';
+    return;
+  }
+  const currentIndex = state.photos.findIndex(p => p.id === state.viewedPhotoId);
+  dom.viewerPrevBtn.style.display = 'flex';
+  dom.viewerNextBtn.style.display = 'flex';
+  dom.viewerPrevBtn.disabled = currentIndex <= 0;
+  dom.viewerNextBtn.disabled = currentIndex >= state.photos.length - 1;
+}
+
+export async function navigatePhoto(direction, dom, env) {
+  if (!state.viewedPhotoId || !state.photos || state.photos.length === 0) return;
+  const currentIndex = state.photos.findIndex(p => p.id === state.viewedPhotoId);
+  if (currentIndex === -1) return;
+  const newIndex = currentIndex + direction;
+  if (newIndex >= 0 && newIndex < state.photos.length) {
+    await openPhotoViewer(state.photos[newIndex].id, dom, env);
+  }
 }

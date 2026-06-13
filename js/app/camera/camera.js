@@ -1,5 +1,5 @@
 import { state } from '../state.js';
-import { clamp } from '../core/utils.js';
+import { clamp, isDebugModeEnabled } from '../core/utils.js';
 import { t } from '../core/i18n.js';
 import { cssForFilter, ensureVideoReady } from './capture.js';
 
@@ -11,8 +11,6 @@ const PREFERRED_DESKTOP_RESOLUTION = { width: 2560, height: 1440 };
 const RESOLUTION_UPGRADE_AREA_RATIO = 0.9;
 const HIGH_RES_FALLBACK_LONG_EDGE = 3840;
 const HIGH_RES_FALLBACK_SHORT_EDGE = 2160;
-
-const isDebugMode = () => localStorage.getItem('debug_mode') === 'true';
 
 function getPreferredVideoConstraints() {
   const isLikelyMobile = /iPhone|iPad|Android/i.test(navigator.userAgent || '');
@@ -129,7 +127,7 @@ export async function initCamera(dom, { showStatus } = {}) {
 
   if (dom?.shutterBtn) dom.shutterBtn.classList.add('disabled');
 
-  if (isDebugMode()) {
+  if (isDebugModeEnabled()) {
     console.log('📷 initCamera START:', {
       requestId,
       facingMode: state.settings.cameraFacingMode,
@@ -163,7 +161,7 @@ export async function initCamera(dom, { showStatus } = {}) {
 
     const ready = await ensureVideoReady(dom?.video);
 
-    if (isDebugMode()) {
+    if (isDebugModeEnabled()) {
       const settings = track?.getSettings?.() || {};
       console.log('📷 Camera initialized:', {
         constraintUsed,

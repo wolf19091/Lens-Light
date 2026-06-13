@@ -1,8 +1,10 @@
 /**
  * Lens Light - Version
- * Single source of truth for app version
+ * Single source of truth for the app version.
+ *
+ * NOTE: sw.js keeps its own APP_VERSION / cache-name constants because a
+ * service worker can't reliably import ES modules at install time. Keep the
+ * version in sw.js in sync with this value on every release.
  */
 
-export const APP_VERSION = '8.0.3';
-export const CACHE_PREFIX = 'lenslight';
-export const CACHE_NAME = `${CACHE_PREFIX}-v${APP_VERSION}`;
+export const APP_VERSION = '8.1.3';

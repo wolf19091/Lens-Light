@@ -25,7 +25,8 @@ export {
   closePhotoViewer,
   openPhotoViewer,
   updatePhotoComment,
-  verifyViewedPhotoCode
+  verifyViewedPhotoCode,
+  navigatePhoto
 } from './viewer.js';
 
 export {

@@ -23,21 +23,6 @@ export function fillRoundedRect(ctx, x, y, width, height, radius, fillStyle) {
   ctx.restore();
 }
 
-export function createSeededRandom(seedA = 0, seedB = 0) {
-  let seed = (
-    (Math.abs(Math.round(seedA * 1e6)) * 2654435761) ^
-    Math.abs(Math.round(seedB * 1e6)) ^
-    0x9e3779b9
-  ) >>> 0;
-
-  if (!seed) seed = 0x12345678;
-
-  return function next() {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 4294967296;
-  };
-}
-
 export function wrapTextIntoLines(ctx, text, maxWidth, maxLines = 2) {
   const value = String(text || '').trim();
   if (!value) return [];

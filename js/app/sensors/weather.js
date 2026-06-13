@@ -125,9 +125,9 @@ function showLocationLoading(dom) {
 
 function showLocationFromSettings(dom) {
   if (!dom?.locationNameEl) return;
+  // Short code lives on the coords line; keep this line to the place name only.
   const location = getEnglishLocationLabel(state.settings.customLocation);
-  const shortPart = state.currentShortAddress ? ` | Short: ${state.currentShortAddress}` : '';
-  dom.locationNameEl.textContent = `Location: ${location}${shortPart}`;
+  dom.locationNameEl.textContent = `Location: ${location}`;
 }
 
 function applyResolvedLocation(dom, label) {

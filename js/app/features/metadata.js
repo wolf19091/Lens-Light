@@ -141,12 +141,3 @@ export function initMetadataExport(dom, { showStatus } = {}) {
   }
   bindPrepEvents({ showStatus });
 }
-
-export async function exportSinglePhotoMetadata(photoId, format = 'excel', { showStatus } = {}) {
-  await openExportPrep({ ids: [photoId], showStatus });
-  if (format === 'pdf') {
-    await exportPreparedPdf({ showStatus });
-  } else {
-    await exportPreparedExcel({ showStatus });
-  }
-}

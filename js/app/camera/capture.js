@@ -1,5 +1,5 @@
 import { state } from '../state.js';
-import { sleep, createShortAddress, notifyPhotosChanged } from '../core/utils.js';
+import { sleep, createShortAddress, notifyPhotosChanged, isDebugModeEnabled } from '../core/utils.js';
 import { t } from '../core/i18n.js';
 import { dbPutPhoto } from '../storage/photoDb.js';
 import { playBeep, playCameraShutter } from './audio.js';
@@ -28,8 +28,6 @@ const FILTER_CSS = Object.freeze({
   vivid: 'contrast(1.2) saturate(1.4)'
 });
 
-const isDebugMode = () => localStorage.getItem('debug_mode') === 'true';
-
 export function cssForFilter(name) {
   return FILTER_CSS[name] || '';
 }
@@ -37,11 +35,11 @@ export function cssForFilter(name) {
 export async function ensureVideoReady(video, timeoutMs = 2000) {
   if (!video) return false;
   if (video.videoWidth && video.videoHeight) {
-    if (isDebugMode()) console.log('✅ Camera ready (immediate):', video.videoWidth, 'x', video.videoHeight);
+    if (isDebugModeEnabled()) console.log('✅ Camera ready (immediate):', video.videoWidth, 'x', video.videoHeight);
     return true;
   }
   if (video.readyState >= 3) {
-    if (isDebugMode()) console.log('✅ Camera ready (readyState):', video.readyState);
+    if (isDebugModeEnabled()) console.log('✅ Camera ready (readyState):', video.readyState);
     return true;
   }
 
@@ -354,7 +352,7 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
   dom.canvas.width = outputWidth;
   dom.canvas.height = outputHeight;
 
-  if (isDebugMode()) {
+  if (isDebugModeEnabled()) {
     console.log('📸 Capture:', {
       video: `${crop.vw}x${crop.vh} (${crop.videoRatio.toFixed(2)})`,
       viewport: `${crop.viewportWidth}x${crop.viewportHeight} (${crop.viewportRatio.toFixed(2)})`,
@@ -390,13 +388,23 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
   // Honor the user's chosen quality (1.0 / 0.9 / 0.8); fall back only if invalid.
   const q = Number(state.settings.imageQuality);
   const jpegQuality = Number.isFinite(q) && q > 0 ? q : 0.95;
-  const blob = await canvasToJpegBlob(dom.canvas, jpegQuality);
+  let blob = await canvasToJpegBlob(dom.canvas, jpegQuality);
+
+  // Stamp EXIF (capture time + GPS/heading) into the JPEG itself so photos
+  // stay geotagged after download/share. Non-fatal: the un-stamped blob is
+  // still a valid photo.
+  try {
+    const { embedPhotoExif } = await import('../features/exif.js');
+    blob = await embedPhotoExif(blob, photoMeta);
+  } catch (err) {
+    console.warn('EXIF embed failed, saving without EXIF:', err);
+  }
 
   await persistCapturedPhoto(blob, photoMeta, { showStatus, onCaptured });
 }
 
 export async function performCapture(dom, { showStatus, onCaptured, onBurstUi } = {}) {
-  if (isDebugMode()) console.log('📸 performCapture called');
+  if (isDebugModeEnabled()) console.log('📸 performCapture called');
 
   if (state.featureState.captureInProgress) {
     console.warn('Capture already in progress');
@@ -420,7 +428,7 @@ export async function performCapture(dom, { showStatus, onCaptured, onBurstUi } 
     console.warn('Quota check failed, proceeding anyway:', e);
   }
 
-  if (isDebugMode()) console.log('Starting capture...');
+  if (isDebugModeEnabled()) console.log('Starting capture...');
 
   try {
     state.featureState.captureInProgress = true;

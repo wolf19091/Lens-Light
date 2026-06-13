@@ -257,35 +257,22 @@ function disableScannerButton(qrBtn) {
   qrBtn.style.opacity = '0.5';
 }
 
-export function initQRScanner(_dom) {
+let qrScannerInitialized = false;
+
+function ensureQRScannerDOM() {
+  if (qrScannerInitialized) return true;
+  
+  const template = document.getElementById('qr-scanner-template');
+  if (!template) return false;
+  
+  document.body.appendChild(template.content.cloneNode(true));
+  qrScannerInitialized = true;
+  
   const qrScanner = document.getElementById('qr-scanner');
-  const qrBtn = document.getElementById('qr-btn');
   const closeBtn = document.getElementById('close-qr-scanner');
-  const resultDiv = document.getElementById('qr-result');
-
-  if (!qrScanner || !qrBtn || !closeBtn) {
-    console.warn('QR scanner UI elements not found');
-    return;
-  }
-
-  if (typeof window.jsQR === 'undefined') {
-    console.warn('⚠️ jsQR library not loaded - QR scanner disabled');
-    if (qrBtn) disableScannerButton(qrBtn);
-    return;
-  }
-
+  
   bindFlashlightToggle();
-
-  qrBtn.addEventListener('click', () => {
-    qrScanner.setAttribute('aria-hidden', 'false');
-    scannerActive = true;
-    resultDiv.style.display = 'none';
-    resultDiv.textContent = '';
-    updateHistoryDisplay();
-    startQRScan();
-    if (isDebugModeEnabled()) console.log('📷 QR Scanner opened');
-  });
-
+  
   closeBtn.addEventListener('click', () => {
     stopScanning();
     qrScanner.setAttribute('aria-hidden', 'true');
@@ -295,20 +282,36 @@ export function initQRScanner(_dom) {
   qrScanner.addEventListener('click', (e) => {
     if (e.target === qrScanner) closeBtn.click();
   });
+  
+  return true;
 }
 
-export function getLastQRCode() {
-  return { data: state.lastQRCode, timestamp: state.lastQRCodeTimestamp };
-}
+export function initQRScanner(_dom) {
+  const qrBtn = document.getElementById('qr-btn');
 
-export function clearQRCode() {
-  state.lastQRCode = null;
-  state.lastQRCodeTimestamp = null;
-}
+  if (!qrBtn) {
+    console.warn('QR scanner UI elements not found');
+    return;
+  }
 
-export const getScanHistory = () => scanHistory;
+  if (typeof window.jsQR === 'undefined') {
+    console.warn('⚠️ jsQR library not loaded - QR scanner disabled');
+    disableScannerButton(qrBtn);
+    return;
+  }
 
-export function clearScanHistory() {
-  scanHistory = [];
-  updateHistoryDisplay();
+  qrBtn.addEventListener('click', () => {
+    if (!ensureQRScannerDOM()) return;
+    
+    const qrScanner = document.getElementById('qr-scanner');
+    const resultDiv = document.getElementById('qr-result');
+    
+    qrScanner.setAttribute('aria-hidden', 'false');
+    scannerActive = true;
+    resultDiv.style.display = 'none';
+    resultDiv.textContent = '';
+    updateHistoryDisplay();
+    startQRScan();
+    if (isDebugModeEnabled()) console.log('📷 QR Scanner opened');
+  });
 }

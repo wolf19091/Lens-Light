@@ -22,6 +22,7 @@ import { initQRScanner } from './app/features/qrscanner.js';
 import { initPhotoComparison } from './app/features/comparison.js';
 import { initMetadataExport } from './app/features/metadata.js';
 import { initHDRToggle } from './app/features/hdr.js';
+import { initMapView } from './app/features/mapview.js';
 
 import { inspectVideoDebugState } from './app/wiring/diagnostics.js';
 import { bindProjectEvents, refreshProjectManagerUi } from './app/wiring/projects.js';
@@ -85,6 +86,7 @@ function initializeApp() {
   initPhotoComparison(dom);
   initMetadataExport(dom, { showStatus });
   initHDRToggle(dom);
+  initMapView(dom, { showStatus });
   if (isDebugModeEnabled()) console.log('✅ Advanced features initialized');
 
   bootstrap(dom, env).catch((e) => {
@@ -98,7 +100,7 @@ function initializeApp() {
 async function bootstrap(dom, env) {
   await loadPhotos(dom);
   refreshProjectManagerUi(dom);
-  checkStoredPermissionsAndBootstrap(dom, env);
+  await checkStoredPermissionsAndBootstrap(dom, env);
   // A second pass after the camera has had a moment to wire up — useful for
   // debugging the iOS Safari `srcObject` race when debug_mode is enabled.
   setTimeout(() => inspectVideoDebugState(dom), 2500);

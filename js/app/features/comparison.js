@@ -132,20 +132,22 @@ async function loadComparison({ comparisonMode, leftImg, rightImg }) {
   }
 }
 
-export function initPhotoComparison(_dom) {
+let comparisonInitialized = false;
+
+function ensureComparisonDOM() {
+  if (comparisonInitialized) return true;
+  
+  const template = document.getElementById('comparison-mode-template');
+  if (!template) return false;
+  
+  document.body.appendChild(template.content.cloneNode(true));
+  comparisonInitialized = true;
+  
   const comparisonMode = document.getElementById('comparison-mode');
-  const compareBtn = document.getElementById('compare-photos-btn');
   const closeBtn = document.getElementById('close-comparison');
   const leftImg = document.querySelector('#comparison-left img');
   const rightImg = document.querySelector('#comparison-right img');
-
-  if (!comparisonMode || !compareBtn || !closeBtn) {
-    console.warn('Photo comparison UI elements not found');
-    return;
-  }
-
-  compareBtn.addEventListener('click', () => loadComparison({ comparisonMode, leftImg, rightImg }));
-
+  
   closeBtn.addEventListener('click', () => {
     comparisonMode.setAttribute('aria-hidden', 'true');
     if (comparisonMode._photoUrls) {
@@ -162,6 +164,27 @@ export function initPhotoComparison(_dom) {
 
   enableImageZoom(leftImg);
   enableImageZoom(rightImg);
+  
+  return true;
+}
+
+export function initPhotoComparison(_dom) {
+  const compareBtn = document.getElementById('compare-photos-btn');
+
+  if (!compareBtn) {
+    console.warn('Compare button not found');
+    return;
+  }
+
+  compareBtn.addEventListener('click', () => {
+    if (!ensureComparisonDOM()) return;
+    
+    const comparisonMode = document.getElementById('comparison-mode');
+    const leftImg = document.querySelector('#comparison-left img');
+    const rightImg = document.querySelector('#comparison-right img');
+    
+    loadComparison({ comparisonMode, leftImg, rightImg });
+  });
 }
 
 export function updateComparisonButton() {

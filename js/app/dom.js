@@ -100,6 +100,7 @@ export function getDom() {
     toggleSound: $('toggle-sound'),
     toggleBattery: $('toggle-battery'),
     batteryModeIndicator: $('battery-mode-indicator'),
+    reenablePermsBtn: $('reenable-permissions-btn'),
     clearAllDataBtn: $('clear-all-data-btn'),
 
     // gallery modal
@@ -116,6 +117,14 @@ export function getDom() {
     deleteSelectedBtn: $('delete-selected-btn'),
     cancelSelectBtn: $('cancel-select-btn'),
 
+    // map view
+    mapViewBtn: $('map-view-btn'),
+    mapModal: $('map-modal'),
+    closeMapBtn: $('close-map'),
+    mapContainer: $('map-container'),
+    mapTitleText: $('map-title-text'),
+    mapPhotoCountEl: $('map-photo-count'),
+
     // photo viewer
     photoViewer: $('photo-viewer'),
     closePhotoViewerBtn: $('close-photo-viewer'),
@@ -127,6 +136,8 @@ export function getDom() {
     viewerCommentBtn: $('viewer-comment-btn'),
     viewerVerifyBtn: $('viewer-verify-btn'),
     viewerDeleteBtn: $('viewer-delete-btn'),
+    viewerPrevBtn: $('viewer-prev-btn'),
+    viewerNextBtn: $('viewer-next-btn'),
 
     // photo-code manual verifier
     verifyBtn: $('verify-btn'),

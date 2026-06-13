@@ -4,9 +4,13 @@ node_modules/
 .env
 .idea/
 .vscode/
+*.code-workspace
 *.swp
 *.swo
 .claude/
 lenslight_export_*.pdf
 lenslight_export_*.xlsx
 lenslight_export_*.xls
+.vs/
+fix.py
+patch.py

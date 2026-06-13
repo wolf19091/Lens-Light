@@ -146,6 +146,9 @@ input, select, textarea {
     color: inherit;
 }
 
+/* Same instant-tap behavior as buttons for every other touch control */
+input, select, label, .toggle-switch { touch-action: manipulation; }
+
 h1, h2, h3, h4, h5, h6, p { margin: 0; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -538,9 +541,11 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
     position: fixed;
     top: calc(56px + var(--safe-top) + 80px);
     left: calc(var(--s-md) + var(--safe-left));
-    width: 56px;
-    max-height: calc(100dvh - 240px - var(--safe-top) - var(--safe-bottom));
-    max-height: calc(var(--app-vh, 1vh) * 100 - 240px - var(--safe-top) - var(--safe-bottom));
+    width: 60px;
+    /* Cap at ~55% of the viewport so the rail never swallows the viewfinder
+       or collides with the data card — extra tools scroll instead. */
+    max-height: min(calc(100dvh - 240px - var(--safe-top) - var(--safe-bottom)), 55dvh);
+    max-height: min(calc(var(--app-vh, 1vh) * 100 - 240px - var(--safe-top) - var(--safe-bottom)), calc(var(--app-vh, 1vh) * 55));
     padding: var(--s-xs);
     display: flex;
     flex-direction: column;
@@ -552,17 +557,20 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
     -webkit-backdrop-filter: saturate(180%) blur(20px);
     overflow-x: hidden;
     overflow-y: auto;
+    scroll-snap-type: y proximity;
     scrollbar-width: none;
     z-index: 74;
 }
 #feature-controls::-webkit-scrollbar { display: none; }
 
 .feature-btn {
-    width: 40px;
-    height: 40px;
-    min-width: 40px;
-    min-height: 40px;
-    flex: 0 0 40px;
+    /* DESIGN.md touch targets: never below 44px on a camera you hold one-handed */
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    flex: 0 0 44px;
+    scroll-snap-align: start;
     border-radius: var(--r-pill);
     background: var(--chip-on-photo);
     border: 1px solid transparent;
@@ -594,7 +602,7 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
 #filter-menu {
     position: fixed;
     top: calc(56px + var(--safe-top) + 80px);
-    left: calc(var(--s-md) + var(--safe-left) + 64px);
+    left: calc(var(--s-md) + var(--safe-left) + 72px);
     margin: 0;
     min-width: 0;
     padding: var(--s-xs);
@@ -1056,7 +1064,8 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
 #gallery-modal,
 #project-panel,
 #export-prep-modal,
-#verify-modal {
+#verify-modal,
+#map-modal {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
@@ -1085,9 +1094,52 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
 #gallery-modal.open,
 #project-panel.open,
 #export-prep-modal.open,
-#verify-modal.open {
+#verify-modal.open,
+#map-modal.open {
     bottom: 0;
     opacity: 1;
+}
+
+/* Map view sheet — fixed-height column so Leaflet gets a concrete size */
+#map-modal {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#map-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    background: var(--color-canvas, #e8e6e1);
+}
+.map-popup {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-xs, 6px);
+    max-width: 220px;
+}
+.map-popup-img {
+    width: 100%;
+    max-height: 130px;
+    object-fit: cover;
+    border-radius: var(--r-sm, 6px);
+    background: var(--color-canvas, #e8e6e1);
+}
+.map-popup-caption {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+    word-break: break-word;
+}
+.map-popup-coords {
+    font-size: 12px;
+    color: var(--color-ink-muted-80, #475569);
+    direction: ltr;
+    unicode-bidi: embed;
+}
+.map-popup .action-btn.map-popup-open {
+    font-size: 13px;
+    padding: 6px 10px;
 }
 
 #verify-modal {
@@ -1234,6 +1286,7 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
 }
 
 .setting-item input[type="text"],
+.setting-item input[type="datetime-local"],
 .setting-item select {
     width: 100%;
     min-height: 44px;
@@ -1252,6 +1305,7 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
 }
 
 .setting-item input[type="text"]:focus,
+.setting-item input[type="datetime-local"]:focus,
 .setting-item select:focus,
 .export-prep-input:focus {
     border-color: var(--color-primary-focus);
@@ -1480,6 +1534,16 @@ input:checked + .slider::before { transform: translateX(20px); }
     flex-wrap: wrap;
 }
 
+/* Sheet-header pills are utility buttons, not hero CTAs — don't let them
+   stretch full-width and stack into a wall of blue on phones. */
+.actions-inline .action-btn,
+.export-prep-actions .action-btn {
+    flex: 0 1 auto;
+    font-size: 14px;
+    letter-spacing: -0.224px;
+    padding: 8px var(--s-md);
+}
+
 /* -------------------------------------------------------------
    23. EXPORT PREP — pearl tiles in a list
    ------------------------------------------------------------- */
@@ -1520,13 +1584,15 @@ input:checked + .slider::before { transform: translateX(20px); }
     letter-spacing: -0.224px;
 }
 
-.export-prep-heading { display: flex; flex-direction: column; gap: 4px; }
+.export-prep-heading { display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; min-width: 0; }
+/* Keep the Close button beside the title instead of wrapping below it */
+.export-prep-header { flex-wrap: nowrap; }
 
 .export-prep-option {
     display: inline-flex;
     align-items: center;
     gap: var(--s-xs);
-    min-height: 36px;
+    min-height: 44px;
     padding: var(--s-xs) var(--s-sm);
     background: var(--color-canvas);
     color: var(--color-ink);
@@ -1535,7 +1601,11 @@ input:checked + .slider::before { transform: translateX(20px); }
     font-size: 14px;
     cursor: pointer;
 }
-.export-prep-option input { accent-color: var(--color-primary); }
+.export-prep-option input {
+    accent-color: var(--color-primary);
+    width: 20px;
+    height: 20px;
+}
 
 .export-prep-variables {
     display: flex;
@@ -1815,6 +1885,40 @@ input:checked + .slider::before { transform: translateX(20px); }
 }
 #photo-viewer .gallery-header h2,
 #photo-viewer-title { color: var(--color-on-dark); }
+
+
+.viewer-nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    transition: background-color 0.2s;
+}
+.viewer-nav-btn:hover {
+    background: rgba(0, 0, 0, 0.8);
+}
+.viewer-nav-btn.prev-btn {
+    left: var(--s-sm);
+}
+.viewer-nav-btn.next-btn {
+    right: var(--s-sm);
+}
+.viewer-nav-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+}
 
 .photo-viewer-body {
     flex: 1;
@@ -2130,7 +2234,7 @@ input:checked + .slider::before { transform: translateX(20px); }
 [dir="rtl"] #timer-menu,
 [dir="rtl"] #filter-menu {
     left: auto;
-    right: calc(var(--s-md) + var(--safe-right) + 64px);
+    right: calc(var(--s-md) + var(--safe-right) + 72px);
 }
 [dir="rtl"] #exposure-control {
     left: auto;
@@ -2197,11 +2301,11 @@ button,
         top: calc(56px + var(--safe-top) + 70px);
         left: calc(var(--s-sm) + var(--safe-left));
         width: 52px;
-        max-height: calc(100dvh - 220px - var(--safe-top) - var(--safe-bottom));
-        max-height: calc(var(--app-vh, 1vh) * 100 - 220px - var(--safe-top) - var(--safe-bottom));
+        max-height: min(calc(100dvh - 220px - var(--safe-top) - var(--safe-bottom)), 55dvh);
+        max-height: min(calc(var(--app-vh, 1vh) * 100 - 220px - var(--safe-top) - var(--safe-bottom)), calc(var(--app-vh, 1vh) * 55));
         padding: var(--s-xxs);
     }
-    .feature-btn { width: 40px; height: 40px; min-width: 40px; min-height: 40px; flex-basis: 40px; font-size: 16px; }
+    .feature-btn { font-size: 16px; }
 
     #zoom-controls { right: calc(var(--s-sm) + var(--safe-right)); }
     .zoom-btn { width: 40px; height: 40px; }
@@ -2232,28 +2336,26 @@ button,
     #comparison-title { font-size: 28px; line-height: 1.14; letter-spacing: -0.28px; }
 }
 
-/* Phone 
-@media (max-width: 640px) {*/
-@media (max-width: 240px) {
+/* Phone */
+@media (max-width: 640px) {
     #topbar .app-title { max-width: 50vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #topbar .pill { min-height: 28px; padding: 6px var(--s-sm); font-size: 11px; }
 
     #data-container {
-        left: calc(var(--s-xs) + var(--safe-left));
+        left: auto;
         right: calc(var(--s-xs) + var(--safe-right));
-        width: auto;
+        width: min(300px, calc(100vw - 88px - var(--safe-left) - var(--safe-right)));
         pointer-events: none;
         padding: var(--s-xs) var(--s-sm);
     }
-    
-    #data-container .small-text { font-size: 9px; line-height: 12px; }
-    #data-container .large-text { font-size: 11px; line-height: 14px; font-weight: 500; }
+
+    /* Compact but still readable in daylight (was 9/11px — illegible) */
+    #data-container .small-text { font-size: 11px; line-height: 1.3; }
+    #data-container .large-text { font-size: 14px; line-height: 1.25; font-weight: 600; }
 
     .action-btn { font-size: 14px; padding: var(--s-xs) var(--s-md); }
 
-    .project-actions { grid-template-columns: 1fr; }
-    #close-active-project-btn { grid-column: auto; }
-
+    .project-actions { grid-template-columns: 1fr 1fr; }
 }
 
 /* Small phone */
@@ -2269,10 +2371,13 @@ button,
 
     #feature-controls {
         top: calc(56px + var(--safe-top) + 64px);
-        width: 48px;
+        width: 52px;
         padding: 4px;
     }
-    .feature-btn { width: 36px; height: 36px; min-width: 36px; min-height: 36px; flex-basis: 36px; font-size: 15px; }
+    /* Keep 44px touch targets even on small phones — shrink chrome, not targets */
+    .feature-btn { font-size: 17px; }
+    #timer-menu,
+    #filter-menu { left: calc(var(--s-md) + var(--safe-left) + 60px); }
 
     #shutter-btn { width: 64px; height: 64px; min-width: 64px; flex-basis: 64px; }
     #gallery-btn,

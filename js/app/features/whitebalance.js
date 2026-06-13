@@ -130,12 +130,3 @@ export function applyWhiteBalanceToCanvas(canvas, ctx, colorTemp) {
 
   ctx.putImageData(imageData, 0, 0);
 }
-
-export const getCurrentColorTemp = () => currentColorTemp;
-
-export function resetWhiteBalance() {
-  currentColorTemp = NEUTRAL_KELVIN;
-  const wbSlider = document.getElementById('wb-slider');
-  if (wbSlider) wbSlider.value = NEUTRAL_KELVIN;
-  applyWhiteBalance(NEUTRAL_KELVIN);
-}

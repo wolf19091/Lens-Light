@@ -57,6 +57,18 @@ export function notifyPhotosChanged() {
   window.dispatchEvent(new Event(PHOTOS_CHANGED_EVENT));
 }
 
+/**
+ * True when lat/lon are real, usable coordinates. The app uses 0/0 as its
+ * "no fix yet" sentinel, so that pair is treated as no GPS. Single source of
+ * truth for the check that EXIF embedding, the map view, and the photo
+ * overlays all rely on.
+ */
+export function hasGpsCoordinates(lat, lon) {
+  const latNum = Number(lat);
+  const lonNum = Number(lon);
+  return Number.isFinite(latNum) && Number.isFinite(lonNum) && !(latNum === 0 && lonNum === 0);
+}
+
 export function createGoogleMapsUrl(lat, lon) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return '';
   return `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`;

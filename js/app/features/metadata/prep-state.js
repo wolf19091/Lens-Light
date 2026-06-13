@@ -8,7 +8,7 @@ import {
   revokeExportPrepUrls
 } from './source.js';
 
-export const DEFAULT_EXPORT_OPTIONS = Object.freeze({
+const DEFAULT_EXPORT_OPTIONS = Object.freeze({
   includeLogo: true,
   includeImages: true,
   includeNotes: true,
