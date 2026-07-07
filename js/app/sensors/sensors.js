@@ -8,6 +8,7 @@ export {
   fetchWeatherData,
   getWeatherDescription,
   maybeUpdateCustomLocationFromWebFactory,
+  refreshWeatherForUnitsChange,
   shouldAutoUpdateCustomLocation,
   updateWeatherDisplay
 } from './weather.js';

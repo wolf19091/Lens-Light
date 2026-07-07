@@ -13,7 +13,6 @@ const SUBSEQUENT_FRAME_SETTLE_MS = 250;
 const SHADOW_LIFT_THRESHOLD = 60;
 const HIGHLIGHT_RECOVER_THRESHOLD = 195;
 const TONE_MAP_GAIN = 1.1;
-const HDR_JPEG_QUALITY = 0.95;
 
 const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -70,14 +69,35 @@ function mergeHDRImages(images) {
   return merged;
 }
 
-async function captureExposureFrame(track, video, ctx, canvas, exposure, isFirst) {
+function drawVideoFrame(ctx, video, canvas, crop) {
+  // When the caller provides the preview crop (object-fit: cover + zoom),
+  // sample exactly that region so HDR output matches a normal capture's
+  // framing instead of stretching the full sensor frame into the canvas.
+  if (crop) {
+    ctx.drawImage(
+      video,
+      crop.sx, crop.sy, crop.zoomedWidth, crop.zoomedHeight,
+      0, 0, canvas.width, canvas.height
+    );
+  } else {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  }
+}
+
+async function captureExposureFrame(track, video, ctx, canvas, exposure, isFirst, crop) {
   await track.applyConstraints({ advanced: [{ exposureCompensation: exposure }] });
   await sleep(isFirst ? FIRST_FRAME_SETTLE_MS : SUBSEQUENT_FRAME_SETTLE_MS);
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  drawVideoFrame(ctx, video, canvas, crop);
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-export async function captureHDR(video, canvas, showStatus) {
+/**
+ * Captures a 3-exposure bracket into `canvas` (which must already be sized
+ * by the caller) and leaves the merged HDR image on it.
+ * Returns the canvas on success, null on failure — the caller keeps or
+ * redraws the canvas based on that.
+ */
+export async function captureHDR(video, canvas, showStatus, crop = null) {
   if (!state.videoStream) {
     console.warn('No video stream available for HDR');
     return null;
@@ -97,20 +117,33 @@ export async function captureHDR(video, canvas, showStatus) {
     return null;
   }
 
+  if (!canvas.width || !canvas.height) {
+    console.warn('❌ HDR canvas has no dimensions — caller must size it first');
+    return null;
+  }
+
   showStatus?.('✨ Capturing HDR (3 exposures)...', 2000);
   if (isDebugModeEnabled()) console.log('✨ Starting HDR capture...');
 
   const originalSettings = track.getSettings();
   const originalExposure = originalSettings.exposureCompensation || 0;
 
+  // Clamp the bracket to the device's supported range so applyConstraints
+  // doesn't reject on cameras with a narrower compensation window.
+  const range = capabilities.exposureCompensation;
+  const clampStop = (stop) => Math.min(
+    Number.isFinite(range.max) ? range.max : stop,
+    Math.max(Number.isFinite(range.min) ? range.min : stop, stop)
+  );
+
   try {
     const images = [];
     for (let i = 0; i < EXPOSURE_STOPS.length; i++) {
-      const stop = EXPOSURE_STOPS[i];
+      const stop = clampStop(EXPOSURE_STOPS[i]);
       if (isDebugModeEnabled()) {
         console.log(`  Capturing exposure ${i + 1}/${EXPOSURE_STOPS.length} (${stop > 0 ? '+' : ''}${stop} EV)`);
       }
-      images.push(await captureExposureFrame(track, video, ctx, canvas, stop, i === 0));
+      images.push(await captureExposureFrame(track, video, ctx, canvas, stop, i === 0, crop));
     }
 
     if (isDebugModeEnabled()) console.log('  Merging HDR images...');
@@ -120,7 +153,10 @@ export async function captureHDR(video, canvas, showStatus) {
 
     if (isDebugModeEnabled()) console.log('✅ HDR capture complete');
     showStatus?.('✅ HDR photo captured', 2000);
-    return canvas.toDataURL('image/jpeg', HDR_JPEG_QUALITY);
+    // The merged image lives on the canvas — return it as the success token.
+    // (Previously this returned canvas.toDataURL(), a multi-MB string the
+    // caller never used.)
+    return canvas;
   } catch (err) {
     console.error('HDR capture failed:', err);
     try {

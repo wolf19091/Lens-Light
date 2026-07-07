@@ -10,7 +10,10 @@ const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const getCardinalDirection = (heading) => CARDINALS[Math.round(heading / 45) % 8];
 
 function readEventHeading(event) {
-  if (event.webkitCompassHeading) return event.webkitCompassHeading;
+  // Explicit finiteness check: a truthiness test treated webkitCompassHeading
+  // of 0 (pointing due north) as "missing" and fell back to the less accurate
+  // alpha value on iOS.
+  if (Number.isFinite(event.webkitCompassHeading)) return event.webkitCompassHeading;
   if (event.alpha !== null && event.alpha !== undefined) return 360 - event.alpha;
   return null;
 }

@@ -75,7 +75,7 @@ function buildOverlayFooterText(text) {
     : '';
 
   if (accuracyText) parts.push(accuracyText);
-  if (!altitudeText.endsWith('-- m') && !altitudeText.endsWith('-- ft')) parts.push(altitudeText);
+  if (altitudeText && !altitudeText.endsWith('-- m') && !altitudeText.endsWith('-- ft')) parts.push(altitudeText);
   if (weatherText) parts.push(weatherText);
   if (filterText) parts.push(filterText);
 

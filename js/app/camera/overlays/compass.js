@@ -27,8 +27,10 @@ export function drawCompassBadgeOverlay(ctx, canvas) {
   const badgeWidth = sidePad + circleSize + gap + labelWidth + sidePad;
 
   // Position below the masthead band so the two don't collide.
-  // The header band height is ~clamp(width * 0.075, 56, 92) + margin*2.
-  const headerBandHeight = clamp(canvas.width * 0.075, 56, 92);
+  // MUST use the same clamp bounds as drawHeaderBand() in report.js
+  // (56..200) — a smaller max here made the chip overlap the band on
+  // high-resolution landscape captures (width * 0.075 > 92).
+  const headerBandHeight = clamp(canvas.width * 0.075, 56, 200);
   const x = canvas.width - margin - badgeWidth;
   const y = margin + headerBandHeight + Math.max(8, margin * 0.6);
 

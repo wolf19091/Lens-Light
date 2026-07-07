@@ -1,7 +1,7 @@
 // Service workers can be loaded as classic scripts in some browsers/cached registrations.
 // Keep these constants local to avoid ESM import parsing failures.
 // NOTE: keep APP_VERSION in sync with js/version.js (single source of truth at build time).
-const APP_VERSION = '8.1.3';
+const APP_VERSION = '9.0.0';
 const CACHE_PREFIX = 'lenslight';
 const CACHE_NAME = `${CACHE_PREFIX}-v${APP_VERSION}`;
 
@@ -52,6 +52,8 @@ const ASSETS = [
   './js/app/ui/orientation.js',
   './js/app/ui/features.js',
   './js/app/ui/wakelock.js',
+  './js/app/ui/splash.js',
+  './js/app/ui/network.js',
   './js/app/wiring/diagnostics.js',
   './js/app/wiring/projects.js',
   './js/app/wiring/permissions.js',
@@ -168,15 +170,19 @@ self.addEventListener('fetch', (event) => {
 
   // HTML navigation stays network-first for fresh updates, but we keep an
   // offline shell in cache so reload works after a successful online load.
-  const isHtml = url.pathname === '/' || url.pathname === '/index.html' || url.pathname.endsWith('.html');
-  
+  // `request.mode === 'navigate'` is the robust signal — pathname checks like
+  // `=== '/'` break when the app is hosted under a subpath (GitHub Pages
+  // serves from /<repo>/, so the start URL is neither '/' nor '*.html').
+  const isHtml = event.request.mode === 'navigate' || url.pathname.endsWith('.html');
+
   if (isHtml) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
           // Only the root/index navigation seeds the offline shell — caching
           // any other same-origin .html under './index.html' would clobber it.
-          const isShell = url.pathname === '/' || url.pathname.endsWith('/index.html');
+          // A trailing '/' covers subpath roots like /<repo>/.
+          const isShell = url.pathname.endsWith('/') || url.pathname.endsWith('/index.html');
           if (
             isShell &&
             response &&

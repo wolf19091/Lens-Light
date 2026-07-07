@@ -29,6 +29,16 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+    <!-- Splash — dismissed by js/app/ui/splash.js once the app is interactive -->
+    <div id="splash" aria-hidden="true">
+        <div class="splash-card">
+            <img src="logo-max-ar-inv.svg" alt="" width="76" height="76">
+            <div class="splash-title">Lens Light</div>
+            <div class="splash-sub">Survey Camera</div>
+            <div class="splash-bar"><span></span></div>
+        </div>
+    </div>
+
     <!-- Camera View -->
     <div id="camera-view">
         <video id="video" autoplay playsinline muted aria-label="Camera live view"></video>
@@ -75,6 +85,7 @@
             </div>
         </div>
         <div class="topbar-right">
+            <span class="pill is-hidden" id="offline-indicator" role="status" aria-label="Offline mode">📡 OFFLINE</span>
             <span class="pill warning is-hidden" id="battery-mode-indicator" aria-label="Battery Saving Mode">🔋 SAVER</span>
             <span class="pill is-hidden" id="active-project-badge" aria-label="Active project"></span>
             <span class="pill" id="ui-badge">LIVE</span>

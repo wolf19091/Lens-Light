@@ -4,6 +4,8 @@ import { isDebugModeEnabled } from './app/core/utils.js';
 import { loadSettings, bindSettingsUi } from './app/core/settings.js';
 import { applyFeatureUI } from './app/ui/features.js';
 import { updateAppVh } from './app/ui/viewport.js';
+import { armSplashFailsafe, dismissSplash } from './app/ui/splash.js';
+import { initNetworkIndicator } from './app/ui/network.js';
 import { registerServiceWorker } from './app/pwa/pwa.js';
 import { APP_VERSION } from './version.js';
 import {
@@ -14,7 +16,7 @@ import {
   updateGalleryUI
 } from './app/gallery/gallery.js';
 import { clearAllPhotos } from './app/storage/photoDb.js';
-import { updateWeatherDisplay } from './app/sensors/sensors.js';
+import { refreshWeatherForUnitsChange } from './app/sensors/sensors.js';
 
 import { initTapToFocus } from './app/features/focus.js';
 import { initWhiteBalance } from './app/features/whitebalance.js';
@@ -43,14 +45,16 @@ if (window.__LENS_LIGHT_INITIALIZED__) {
 }
 
 function initializeApp() {
+  armSplashFailsafe();
   const dom = getDom();
   const { showStatus } = createStatus(dom.statusMsg);
+  initNetworkIndicator({ showStatus });
   const galleryObserver = createGalleryObserver(dom);
   const env = { showStatus, galleryObserver };
 
   bindSettingsUi(dom, {
     showStatus,
-    updateWeatherDisplay: () => updateWeatherDisplay(dom),
+    updateWeatherDisplay: () => refreshWeatherForUnitsChange(dom),
     renderGallery: () => renderGallery(dom, galleryObserver, { showStatus }),
     revokeAllPhotoObjectUrls,
     clearAllPhotos,
@@ -88,6 +92,9 @@ function initializeApp() {
   initHDRToggle(dom);
   initMapView(dom, { showStatus });
   if (isDebugModeEnabled()) console.log('✅ Advanced features initialized');
+
+  // UI is interactive from here — camera/permissions continue async.
+  dismissSplash();
 
   bootstrap(dom, env).catch((e) => {
     console.error('bootstrap failed', e);

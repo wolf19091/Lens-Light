@@ -216,19 +216,25 @@ function triggerShutterFlash(dom) {
   setTimeout(() => dom.flash.classList.remove('active'), FLASH_DURATION_MS);
 }
 
-async function runHdrCaptureIfActive(dom, showStatus) {
-  if (!state.featureState.hdrMode) return false;
+/**
+ * Runs the bracketed HDR capture onto the (already sized) canvas.
+ * Returns `{ sfxPlayed, merged }` so the caller knows whether the shutter
+ * sound/flash already fired and whether the canvas now holds the HDR merge
+ * (merged=false → caller must draw a normal frame instead).
+ */
+async function runHdrCaptureIfActive(dom, showStatus, crop) {
+  if (!state.featureState.hdrMode) return { sfxPlayed: false, merged: false };
 
   try {
     const { captureHDR } = await import('../features/hdr.js');
     playCameraShutter();
     triggerShutterFlash(dom);
-    const result = await captureHDR(dom.video, dom.canvas, showStatus);
+    const result = await captureHDR(dom.video, dom.canvas, showStatus, crop);
     if (!result) console.warn('HDR capture failed, using normal mode');
-    return true; // HDR took ownership of shutter sfx; canvas is already populated.
+    return { sfxPlayed: true, merged: Boolean(result) };
   } catch (err) {
     console.error('HDR module error:', err);
-    return false;
+    return { sfxPlayed: false, merged: false };
   }
 }
 
@@ -340,17 +346,19 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
   // willReadFrequently keeps getImageData fast for sharpening/HDR/white-balance.
   const ctx = dom.canvas.getContext('2d', { alpha: false, willReadFrequently: true });
 
-  const hdrHandled = await runHdrCaptureIfActive(dom, showStatus);
-  if (!hdrHandled) {
-    playCameraShutter();
-    triggerShutterFlash(dom);
-  }
-
+  // Size the canvas BEFORE the HDR bracket runs — resizing a canvas clears it,
+  // so doing this any later would silently wipe the merged HDR image.
   const crop = computeSourceCrop(dom.video);
   const { outputWidth, outputHeight, exportScale } = computeOutputSize(crop.zoomedWidth, crop.zoomedHeight);
 
   dom.canvas.width = outputWidth;
   dom.canvas.height = outputHeight;
+
+  const hdr = await runHdrCaptureIfActive(dom, showStatus, crop);
+  if (!hdr.sfxPlayed) {
+    playCameraShutter();
+    triggerShutterFlash(dom);
+  }
 
   if (isDebugModeEnabled()) {
     console.log('📸 Capture:', {
@@ -364,15 +372,19 @@ export async function enhancedCapture(dom, { showStatus, onCaptured } = {}) {
     });
   }
 
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = exportScale < 1 ? 'high' : 'medium';
-  ctx.filter = buildPreviewFilterChain();
-  ctx.drawImage(
-    dom.video,
-    crop.sx, crop.sy, crop.zoomedWidth, crop.zoomedHeight,
-    0, 0, outputWidth, outputHeight
-  );
-  ctx.filter = 'none';
+  // When HDR merged successfully the canvas already holds the final frame;
+  // drawing the live video again here would throw the merge away.
+  if (!hdr.merged) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = exportScale < 1 ? 'high' : 'medium';
+    ctx.filter = buildPreviewFilterChain();
+    ctx.drawImage(
+      dom.video,
+      crop.sx, crop.sy, crop.zoomedWidth, crop.zoomedHeight,
+      0, 0, outputWidth, outputHeight
+    );
+    ctx.filter = 'none';
+  }
 
   await applyEnhancementFilters(dom.canvas, ctx);
 

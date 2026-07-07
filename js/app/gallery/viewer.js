@@ -2,6 +2,7 @@ import { state } from '../state.js';
 import { t } from '../core/i18n.js';
 import { dbGetPhoto, dbPutPhoto } from '../storage/photoDb.js';
 import { verifyPhotoCode } from '../features/photocode.js';
+import { getGalleryPhotos } from './render.js';
 
 function setCommentDisplay(commentEl, text) {
   if (!commentEl) return;
@@ -111,26 +112,32 @@ export async function updatePhotoComment(photoId, dom, { showStatus } = {}) {
 
 function updateNavButtons(dom) {
   if (!dom?.viewerPrevBtn || !dom?.viewerNextBtn) return;
-  if (!state.photos || state.photos.length <= 1) {
+  // Navigate within the same set the gallery shows (project-filtered when a
+  // project is open) — stepping through unrelated projects' photos here would
+  // contradict the grid the user just came from.
+  const photos = getGalleryPhotos();
+  const currentIndex = photos.findIndex(p => p.id === state.viewedPhotoId);
+  if (photos.length <= 1 || currentIndex === -1) {
     dom.viewerPrevBtn.disabled = true;
     dom.viewerNextBtn.disabled = true;
     dom.viewerPrevBtn.style.display = 'none';
     dom.viewerNextBtn.style.display = 'none';
     return;
   }
-  const currentIndex = state.photos.findIndex(p => p.id === state.viewedPhotoId);
   dom.viewerPrevBtn.style.display = 'flex';
   dom.viewerNextBtn.style.display = 'flex';
   dom.viewerPrevBtn.disabled = currentIndex <= 0;
-  dom.viewerNextBtn.disabled = currentIndex >= state.photos.length - 1;
+  dom.viewerNextBtn.disabled = currentIndex >= photos.length - 1;
 }
 
 export async function navigatePhoto(direction, dom, env) {
-  if (!state.viewedPhotoId || !state.photos || state.photos.length === 0) return;
-  const currentIndex = state.photos.findIndex(p => p.id === state.viewedPhotoId);
+  if (!state.viewedPhotoId) return;
+  const photos = getGalleryPhotos();
+  if (photos.length === 0) return;
+  const currentIndex = photos.findIndex(p => p.id === state.viewedPhotoId);
   if (currentIndex === -1) return;
   const newIndex = currentIndex + direction;
-  if (newIndex >= 0 && newIndex < state.photos.length) {
-    await openPhotoViewer(state.photos[newIndex].id, dom, env);
+  if (newIndex >= 0 && newIndex < photos.length) {
+    await openPhotoViewer(photos[newIndex].id, dom, env);
   }
 }

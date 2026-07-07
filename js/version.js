@@ -7,4 +7,4 @@
  * version in sw.js in sync with this value on every release.
  */
 
-export const APP_VERSION = '8.1.3';
+export const APP_VERSION = '9.0.0';

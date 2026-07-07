@@ -1,6 +1,7 @@
 import { state } from '../state.js';
 import { showStatus } from '../core/status.js';
 import { isDebugModeEnabled } from '../core/utils.js';
+import { playBeep } from '../camera/audio.js';
 
 /**
  * QR scanner. Streams frames from the live camera into a hidden canvas and
@@ -39,9 +40,15 @@ function detectQRType(data) {
 }
 
 function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  // Explicit entity escaping — the previous div.innerHTML trick does NOT
+  // escape quotes, which allowed a crafted QR payload to break out of the
+  // data-qr="..." attribute in the history markup.
+  return String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function truncateText(text, maxLength) {
@@ -49,22 +56,10 @@ function truncateText(text, maxLength) {
 }
 
 function playSuccessBeep() {
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-
-    const ctx = new AudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.frequency.value = SUCCESS_BEEP_HZ;
-    gain.gain.value = SUCCESS_BEEP_GAIN;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + SUCCESS_BEEP_DURATION_S);
-  } catch {
-    // Ignore audio errors — non-critical UI cue.
-  }
+  // Reuses the app-wide lazily-created AudioContext. Creating a fresh
+  // AudioContext per scan (as before) leaked them — browsers cap live
+  // contexts (~6), after which the beep silently stopped working.
+  playBeep(SUCCESS_BEEP_HZ, SUCCESS_BEEP_DURATION_S, SUCCESS_BEEP_GAIN);
 }
 
 async function copyToClipboard(text) {
@@ -121,7 +116,12 @@ function buildActionHandlers(data, resultDiv) {
     call: () => { window.location.href = data; },
     maps: () => window.open(data, '_blank'),
     share: () => shareQRData(data),
-    rescan: () => { resultDiv.style.display = 'none'; startQRScan(); }
+    rescan: () => {
+      resultDiv.classList.add('is-hidden');
+      resultDiv.style.display = 'none';
+      scannerActive = true;
+      startQRScan();
+    }
   };
 }
 
@@ -193,6 +193,9 @@ function handleQRCodeDetected(data) {
     <div class="qr-result-data">${escapeHtml(truncateText(data, RESULT_TRUNCATE_CHARS))}</div>
     <div class="qr-result-actions">${generateActions(data, qrType)}</div>
   `;
+  // The template ships the card with .is-hidden (display:none !important),
+  // which an inline display value cannot override — remove it explicitly.
+  resultDiv.classList.remove('is-hidden');
   resultDiv.style.display = 'block';
   attachActionHandlers(resultDiv, data);
 
@@ -308,6 +311,7 @@ export function initQRScanner(_dom) {
     
     qrScanner.setAttribute('aria-hidden', 'false');
     scannerActive = true;
+    resultDiv.classList.add('is-hidden');
     resultDiv.style.display = 'none';
     resultDiv.textContent = '';
     updateHistoryDisplay();

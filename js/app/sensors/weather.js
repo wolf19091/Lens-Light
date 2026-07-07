@@ -1,5 +1,6 @@
 import { state } from '../state.js';
 import { saveSettings } from '../core/settings.js';
+import { hasGpsCoordinates } from '../core/utils.js';
 import { getEnglishLocationLabel } from './gps.js';
 import { reverseGeocodeFromWeb } from './geocoding.js';
 
@@ -110,6 +111,19 @@ export async function fetchWeatherData(lat, lon, dom) {
   } catch (e) {
     if (e?.name !== 'AbortError') console.warn('fetchWeatherData failed', e);
   }
+}
+
+/**
+ * Called when the user switches metric/imperial. The cached weather values
+ * were fetched in the OLD unit (Open-Meteo returns numbers in the requested
+ * unit), so just re-rendering would label a Celsius number as °F. Re-render
+ * immediately for responsiveness, then force a refetch in the new unit.
+ */
+export function refreshWeatherForUnitsChange(dom) {
+  updateWeatherDisplay(dom);
+  if (!hasGpsCoordinates(state.currentLat, state.currentLon)) return;
+  state.lastWeatherFetch = 0;
+  fetchWeatherData(state.currentLat, state.currentLon, dom);
 }
 
 export function shouldAutoUpdateCustomLocation(dom) {
