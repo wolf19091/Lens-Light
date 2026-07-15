@@ -1,4 +1,4 @@
-import { createGoogleMapsUrl, createShortAddress } from '../../core/utils.js';
+import { createGoogleMapsUrl, createShortAddress, downloadBlob } from '../../core/utils.js';
 import {
   escapeHtml,
   formatAltitude,
@@ -292,7 +292,10 @@ async function renderJsPdfDocument(payload) {
     if (index + 1 < payload.items.length) await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
-  pdf.save(`lenslight_export_${getExportTimestamp()}.pdf`);
+  // Return the bytes instead of calling pdf.save(): jsPDF's internal saver
+  // misbehaves inside installed iOS PWAs, while our downloadBlob routes
+  // through the native share sheet there.
+  return pdf.output('blob');
 }
 
 function renderHtmlPrintFallback(printWindow, payload) {
@@ -326,8 +329,9 @@ export async function exportPreparedPdf({ showStatus } = {}) {
   const hydratedPayload = { ...payload, items };
 
   try {
-    await renderJsPdfDocument(hydratedPayload);
+    const pdfBlob = await renderJsPdfDocument(hydratedPayload);
     if (fallbackWindow && !fallbackWindow.closed) fallbackWindow.close();
+    downloadBlob(pdfBlob, `lenslight_export_${getExportTimestamp()}.pdf`, { showStatus, preferShare: true });
     showStatus?.('PDF export downloaded in the prepared order.', 2500);
     closeExportPrep();
     return;

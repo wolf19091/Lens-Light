@@ -260,7 +260,7 @@ export async function exportPreparedExcel({ showStatus } = {}) {
 
   try {
     const blob = await buildExcelJsBlob(hydratedPayload);
-    downloadBlob(blob, `${filenameBase}.xlsx`, { showStatus });
+    downloadBlob(blob, `${filenameBase}.xlsx`, { showStatus, preferShare: true });
     showStatus?.('Excel export downloaded with embedded photos.', 2500);
     closeExportPrep();
     return;
@@ -270,7 +270,7 @@ export async function exportPreparedExcel({ showStatus } = {}) {
 
   try {
     const workbookBlob = buildXlsxBlob(hydratedPayload);
-    downloadBlob(workbookBlob, `${filenameBase}.xlsx`, { showStatus });
+    downloadBlob(workbookBlob, `${filenameBase}.xlsx`, { showStatus, preferShare: true });
     showStatus?.('Excel export downloaded with embedded photos.', 2500);
     closeExportPrep();
     return;
@@ -280,7 +280,7 @@ export async function exportPreparedExcel({ showStatus } = {}) {
 
   const html = buildExcelHtml(hydratedPayload);
   const blob = new Blob([`﻿${html}`], { type: XLS_MIME });
-  downloadBlob(blob, `${filenameBase}.xls`, { showStatus });
+  downloadBlob(blob, `${filenameBase}.xls`, { showStatus, preferShare: true });
   showStatus?.('Excel exported in compatibility mode. Images may be limited in some viewers.', 3200);
   closeExportPrep();
 }

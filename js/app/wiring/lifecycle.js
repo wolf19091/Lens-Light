@@ -4,6 +4,7 @@ import { bindUiRotation } from '../ui/orientation.js';
 import { releaseWakeLock, requestWakeLock } from '../ui/wakelock.js';
 import { stopSensors } from '../sensors/sensors.js';
 import { initCamera } from '../camera/camera.js';
+import { resetPhotoDbConnection } from '../storage/photoDb.js';
 
 const CLOCK_TICK_MS = 1000;
 // Guard against overlapping recovery attempts when the OS fires
@@ -12,6 +13,9 @@ const CLOCK_TICK_MS = 1000;
 let cameraRecoveryInFlight = false;
 // Tracked so the wall-clock tick can be stopped on unload.
 let clockIntervalId = null;
+// True once the page has actually been backgrounded, so resume hooks can
+// tell a real return-to-foreground apart from the initial page load.
+let wasHidden = false;
 
 /** True iff `stream` has at least one live, non-muted video track. */
 function isStreamLive(stream) {
@@ -59,16 +63,28 @@ function bindWakeLock(dom, env) {
 
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'visible') {
+      // iOS/WebKit severs IndexedDB connections while the app is
+      // backgrounded (share sheet after export, app switcher, lock
+      // screen). Requests on the stale connection hang forever, which
+      // freezes every photo action until the app is force-closed.
+      // Dropping the cached connection here makes the next DB call
+      // reconnect cleanly. Cheap no-op when the connection is healthy.
+      if (wasHidden) {
+        wasHidden = false;
+        resetPhotoDbConnection();
+      }
       await recoverCameraIfNeeded(dom, env);
       if (dom.video && !dom.video.paused) requestWakeLock();
     } else {
+      wasHidden = true;
       await releaseWakeLock();
     }
   });
 
   // BFCache restores (back-button on Android, swipe-back on iOS Safari)
   // don't always trigger visibilitychange but do fire pageshow.
-  window.addEventListener('pageshow', () => {
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) resetPhotoDbConnection();
     if (document.visibilityState === 'visible') {
       recoverCameraIfNeeded(dom, env);
     }

@@ -1,7 +1,7 @@
 // Service workers can be loaded as classic scripts in some browsers/cached registrations.
 // Keep these constants local to avoid ESM import parsing failures.
 // NOTE: keep APP_VERSION in sync with js/version.js (single source of truth at build time).
-const APP_VERSION = '9.0.0';
+const APP_VERSION = '9.0.1';
 const CACHE_PREFIX = 'lenslight';
 const CACHE_NAME = `${CACHE_PREFIX}-v${APP_VERSION}`;
 

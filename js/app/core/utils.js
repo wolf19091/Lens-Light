@@ -29,17 +29,43 @@ export function sanitizeInput(value) {
     .replace(/'/g, '&#x27;');
 }
 
-export function downloadBlob(blob, filename, { showStatus } = {}) {
-  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+/**
+ * iOS delivery path. `window.open(blobUrl)` in an installed PWA can strand
+ * the user on a blank in-app overlay for non-displayable types (.xlsx) with
+ * no way back except force-closing — the native share sheet ("Save to
+ * Files") is the reliable route. Falls back to window.open when the Web
+ * Share API is unavailable or the user-activation window has expired.
+ */
+async function deliverBlobOnIOS(blob, filename, { showStatus, preferShare }) {
+  if (preferShare && navigator.share) {
+    try {
+      const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+      if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: filename });
+        return;
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') return; // user cancelled — done
+      // NotAllowedError (gesture expired) etc. — fall through to window.open
+    }
+  }
+
   const url = URL.createObjectURL(blob);
+  const opened = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!opened && showStatus) showStatus('Popup blocked. Tap and hold to save.', 3500);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export function downloadBlob(blob, filename, { showStatus, preferShare = false } = {}) {
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
 
   if (isIOS) {
-    const opened = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!opened && showStatus) showStatus('Popup blocked. Tap and hold to save.', 3500);
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    // Fire-and-forget: internal fallbacks handle every failure mode.
+    deliverBlobOnIOS(blob, filename, { showStatus, preferShare }).catch(() => {});
     return;
   }
 
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.download = filename;
   a.href = url;
